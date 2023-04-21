@@ -1,3 +1,5 @@
+extern crate rand;
+
 pub const REGISTERS: usize = 16;
 pub const STACK_SIZE: usize = 16;
 pub const RAM_SIZE: usize = 4096;
@@ -9,8 +11,8 @@ pub const ENTRY_POINT: usize = 512;
 pub struct Chip8 {
     pub i: u16,
     pub sp: u8,
-    pub stack: [u16; STACK_SIZE],
-    pub memory: [u8; RAM_SIZE],
+    stack: [u16; STACK_SIZE],
+    memory: [u8; RAM_SIZE],
     pub v: [u8; REGISTERS],
     pub pc: u16,
     pub dt: u8,
@@ -41,13 +43,15 @@ impl Chip8 {
         let opcode = (self.memory[self.pc as usize] as u16) << 8
             | (self.memory[self.pc as usize + 1] as u16);
 
+        // println!("{:#04x}", opcode);
+
         match opcode & 0xF000 {
             // 00E_
             0x0000 => {
                 match opcode & 0x000F {
                     // 00E0 - Clear screen
                     0x0000 => {
-                        // TODO: Clear screen
+                        self.gfx_buffer = [0; SCREEN_WIDTH * SCREEN_HEIGHT];
                         self.pc += 2;
                     }
                     // 00EE - Return from subroutine
@@ -81,7 +85,37 @@ impl Chip8 {
                 }
             }
 
-            // ---
+            // 4XNN - Skips the next instruction if VX does not equal NN.
+            0x4000 => {
+                todo!()
+            }
+
+            // 5XY0 - Skips the next instruction if VX equals VY.
+            0x5000 => {
+                todo!()
+            }
+
+            // 6XNN - Sets VX to NN.
+            0x6000 => {
+                self.v[((opcode & 0x0F00) >> 8) as usize] = (opcode & 0x00FF) as u8;
+                self.pc += 2;
+            }
+
+            // 7XNN - Adds NN to VX.
+            0x7000 => {
+                self.v[((opcode & 0x0F00) >> 8) as usize] += (opcode & 0x00FF) as u8;
+                self.pc += 2;
+            }
+
+            // 8XY_
+            0x8000 => {
+                todo!()
+            }
+
+            // 9XY0 - Skips the next instruction if VX doesn't equal VY
+            0x9000 => {
+                todo!()
+            }
 
             // ANNN - Sets I to the address NNN.
             0xA000 => {
@@ -95,8 +129,96 @@ impl Chip8 {
                 self.pc += 2;
             }
 
-            _ => (),
-            // _ => panic!("Unknown opcode"),
+            // CXNN - Sets VX to a random number, masked by NN.
+            0xC000 => {
+                // TODO: Needs to be tested
+                self.v[((opcode & 0x0F00) >> 8) as usize] =
+                    (rand::random::<u8>() % 0xFF + 1) & (opcode & 0x00FF) as u8;
+                self.pc += 2;
+            }
+
+            // DXYN: Draws a sprite at coordinate (VX, VY) that has a width of 8 pixels and a height of N pixels.
+            0xD000 => {
+                let vx = self.v[((opcode & 0x0F00) >> 8) as usize] as u16;
+                let vy = self.v[((opcode & 0x00F0) >> 4) as usize] as u16;
+                let height = opcode & 0x000F;
+                self.v[0xF] &= 0;
+
+                for y in 0..height {
+                    let pixel = self.memory[(self.i + y) as usize];
+                    for x in 0..8 {
+                        if pixel & (0x80 >> x) >= 1 {
+                            if self.gfx_buffer[(x + vx + (y + vy) * 64) as usize] >= 1 {
+                                self.v[0xF] = 1;
+                            }
+                            self.gfx_buffer[(x + vx + (y + vy) * 64) as usize] ^= 1;
+                        }
+                    }
+                }
+
+                self.pc += 2;
+            }
+
+            // EX__
+            0xE000 => {
+                todo!()
+            }
+
+            // FX__
+            0xF000 => match opcode & 0x00FF {
+                // FX07 - Sets VX to the value of the delay timer
+                0x0007 => {
+                    self.v[((opcode & 0x0F00) >> 8) as usize] = self.dt;
+                    self.pc += 2;
+                }
+                // FX0A - A key press is awaited, and then stored in VX
+                0x000A => {
+                    todo!()
+                }
+                // FX15 - Sets the delay timer to VX
+                0x0015 => {
+                    self.dt = self.v[((opcode & 0x0F00) >> 8) as usize];
+                    self.pc += 2;
+                }
+                // FX18 - Sets the sound timer to VX
+                0x0018 => {
+                    todo!()
+                }
+                // FX1E - Adds VX to I
+                0x001E => {
+                    todo!()
+                }
+                // FX29 - Sets I to the location of the sprite for the character in VX.
+                0x0029 => {
+                    self.i = self.v[((opcode & 0x0F00) >> 8) as usize] as u16 * 0x5;
+                    self.pc += 2;
+                }
+                // FX33 - Stores the Binary-coded decimal representation of VX at the addresses I, I plus 1, and I plus 2
+                0x0033 => {
+                    self.memory[self.i as usize] = self.v[((opcode & 0x0F00) >> 8) as usize] / 100;
+                    self.memory[(self.i + 1) as usize] =
+                        (self.v[((opcode & 0x0F00) >> 8) as usize] / 10) % 10;
+                    self.memory[(self.i + 2) as usize] =
+                        self.v[((opcode & 0x0F00) >> 8) as usize] % 10;
+                    self.pc += 2;
+                }
+                // FX55 - Stores V0 to VX in memory starting at address I
+                0x0055 => {
+                    todo!()
+                }
+                0x0065 => {
+                    // TODO: Must be tested
+                    for i in 0..((opcode & 0x0F00) >> 8) {
+                        self.v[i as usize] = self.memory[(self.i + i) as usize];
+                    }
+
+                    self.i += ((opcode & 0x0F00) >> 8) + 1;
+                    self.pc += 2;
+                }
+                _ => todo!(),
+            },
+
+            _ => panic!("Unknown opcode"),
         }
     }
 }
@@ -110,21 +232,30 @@ mod tests {
     fn test_sys_addr() {}
     */
 
-    /*
     #[test]
     fn test_cls() {
         let mut cpu = Chip8::new();
-        //cpu.gfx_buffer = [1; SCREEN_WIDTH * SCREEN_HEIGHT];
-        //cpu.memory[ENTRY_POINT] = 00E0 as u8;
+
+        // Fill the graphics buffer
+        cpu.gfx_buffer = [1; SCREEN_WIDTH * SCREEN_HEIGHT];
+
+        // Load CLS
+        cpu.memory[ENTRY_POINT] = 00E0 as u8;
+
         cpu.tick();
 
         assert_eq!(cpu.pc, (ENTRY_POINT + 2) as u16);
         assert_eq!(cpu.gfx_buffer, [0; SCREEN_WIDTH * SCREEN_HEIGHT]);
     }
 
+    /*
     #[test]
     fn test_ret() {
         let mut cpu = Chip8::new();
+
+        // Load RET
+        cpu.memory[ENTRY_POINT] = 00EE as u8;
+
         cpu.tick();
 
         assert_eq!(cpu.pc, (ENTRY_POINT + 2) as u16);

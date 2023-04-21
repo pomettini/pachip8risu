@@ -2,8 +2,15 @@
 name = "yet-another-chip-8-emulator"
 version = "0.1.0"
 edition = "2021"
+# build = "build.rs"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[features]
+default = []
+# use_sdl2_mac_framework = ["sdl2/use_mac_framework"]
 
 [dependencies]
-sdl2 = "0.35.2"
+rand = "0.8.5"
+# sdl2 = "0.35.2"
+
+[profile.dev]
+overflow-checks = false
