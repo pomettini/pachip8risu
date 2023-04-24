@@ -41,6 +41,14 @@ fn main() {
     while window.is_open() && !window.is_key_down(Key::Escape) {
         cpu.tick();
 
+        /*
+        // Ditched, too expensive on the CPU, need to find another
+        window.set_title(&format!(
+            "Yet Another Chip-8 Emulator - PC: {:#04X} - INDEX: {:#04X} - REG: {:?}",
+            &cpu.pc, &cpu.i, &cpu.v
+        ));
+         */
+
         // We unwrap here as we want this code to exit if it fails. Real applications may want to handle this in a different way
         window
             .update_with_buffer(

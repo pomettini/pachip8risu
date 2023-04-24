@@ -1,45 +1,78 @@
 extern crate rand;
 
-pub const REGISTERS: usize = 16;
-pub const STACK_SIZE: usize = 16;
-pub const RAM_SIZE: usize = 4096;
-pub const SCREEN_WIDTH: usize = 64;
-pub const SCREEN_HEIGHT: usize = 32;
-pub const ENTRY_POINT: usize = 512;
+const REGISTERS: usize = 16;
+const STACK_SIZE: usize = 16;
+const KEYS: usize = 16;
+const RAM_SIZE: usize = 4096;
+const SCREEN_WIDTH: usize = 64;
+const SCREEN_HEIGHT: usize = 32;
+const ENTRY_POINT: usize = 512;
+
+const FONT: [u8; 80] = [
+    0xF0, 0x90, 0x90, 0x90, 0xF0, //0
+    0x20, 0x60, 0x20, 0x20, 0x70, //1
+    0xF0, 0x10, 0xF0, 0x80, 0xF0, //2
+    0xF0, 0x10, 0xF0, 0x10, 0xF0, //3
+    0x90, 0x90, 0xF0, 0x10, 0x10, //4
+    0xF0, 0x80, 0xF0, 0x10, 0xF0, //5
+    0xF0, 0x80, 0xF0, 0x90, 0xF0, //6
+    0xF0, 0x10, 0x20, 0x40, 0x40, //7
+    0xF0, 0x90, 0xF0, 0x90, 0xF0, //8
+    0xF0, 0x90, 0xF0, 0x10, 0xF0, //9
+    0xF0, 0x90, 0xF0, 0x90, 0x90, //A
+    0xE0, 0x90, 0xE0, 0x90, 0xE0, //B
+    0xF0, 0x80, 0x80, 0x80, 0xF0, //C
+    0xE0, 0x90, 0x90, 0x90, 0xE0, //D
+    0xF0, 0x80, 0xF0, 0x80, 0xF0, //E
+    0xF0, 0x80, 0xF0, 0x80, 0x80, //F
+];
 
 #[derive(Debug)]
 pub struct Chip8 {
     pub i: u16,
     pub sp: u8,
-    stack: [u16; STACK_SIZE],
-    memory: [u8; RAM_SIZE],
+    pub stack: [u16; STACK_SIZE],
+    pub memory: [u8; RAM_SIZE],
     pub v: [u8; REGISTERS],
     pub pc: u16,
     pub dt: u8,
+    pub keys: [bool; KEYS],
     pub gfx_buffer: [u8; SCREEN_WIDTH * SCREEN_HEIGHT],
 }
 
 impl Chip8 {
     pub fn new() -> Self {
-        Self {
+        let mut cpu = Self {
             i: 0,
             sp: 0,
             stack: [0; STACK_SIZE],
             memory: [0; RAM_SIZE],
             v: [0; REGISTERS],
-            pc: ENTRY_POINT as u16,
+            pc: 0,
             dt: 0,
+            keys: [false; KEYS],
             gfx_buffer: [0; SCREEN_WIDTH * SCREEN_HEIGHT],
-        }
+        };
+
+        // Load font at address 0x000
+        cpu.memory[0..FONT.len()].copy_from_slice(&FONT);
+
+        // Set entry point at address 0x200
+        cpu.pc = ENTRY_POINT as u16;
+
+        cpu
     }
 
     pub fn load_rom(&mut self, buf: &[u8]) {
         self.memory[ENTRY_POINT..(buf.len() + ENTRY_POINT)].copy_from_slice(buf);
     }
 
+    const fn get_opcode(&self) -> u16 {
+        (self.memory[self.pc as usize] as u16) << 8 | (self.memory[self.pc as usize + 1] as u16)
+    }
+
     pub fn tick(&mut self) {
-        let opcode = (self.memory[self.pc as usize] as u16) << 8
-            | (self.memory[self.pc as usize + 1] as u16);
+        let opcode = self.get_opcode();
 
         let nib_1 = (opcode & 0xF000) >> 12;
         let nib_2 = (opcode & 0x0F00) >> 8;
@@ -80,7 +113,7 @@ impl Chip8 {
 
             // 3XNN - Skips the next instruction if VX equals NN.
             (0x3, _, _, _) => {
-                if self.v[x] as u16 == (opcode & 0x00FF) {
+                if self.v[x] == kk {
                     self.pc += 4;
                 } else {
                     self.pc += 2;
@@ -89,7 +122,7 @@ impl Chip8 {
 
             // 4XNN - Skips the next instruction if VX does not equal NN.
             (0x4, _, _, _) => {
-                if self.v[x] as u16 != (opcode & 0x00FF) {
+                if self.v[x] != kk {
                     self.pc += 4;
                 } else {
                     self.pc += 2;
@@ -135,9 +168,9 @@ impl Chip8 {
                 self.v[x] += self.v[y];
 
                 if self.v[y] > (0xFF - self.v[x]) {
-                    self.v[0xF] = 1
+                    self.v[0xF] = 1;
                 } else {
-                    self.v[0xF] = 0
+                    self.v[0xF] = 0;
                 }
 
                 self.pc += 2;
@@ -172,7 +205,7 @@ impl Chip8 {
 
             // BNNN - Jumps to the address NNN plus V0.
             (0xB, _, _, _) => {
-                self.pc = (nnn) + self.v[0] as u16;
+                self.pc = nnn + self.v[0] as u16;
                 self.pc += 2;
             }
 
@@ -190,23 +223,28 @@ impl Chip8 {
                 let height = opcode & 0x000F;
                 self.v[0xF] &= 0;
 
-                for y in 0..height {
+                // TODO: Needs refactor
+                (0..height).for_each(|y| {
                     let pixel = self.memory[(self.i + y) as usize];
-                    for x in 0..8 {
+                    (0..8).for_each(|x| {
                         if pixel & (0x80 >> x) >= 1 {
                             if self.gfx_buffer[(x + vx + (y + vy) * 64) as usize] >= 1 {
                                 self.v[0xF] = 1;
                             }
                             self.gfx_buffer[(x + vx + (y + vy) * 64) as usize] ^= 1;
                         }
-                    }
-                }
+                    });
+                });
 
                 self.pc += 2;
             }
 
             (0xE, _, 0x9, 0xE) => {
-                todo!()
+                if self.keys[self.v[x] as usize] {
+                    self.pc += 4;
+                } else {
+                    self.pc += 2;
+                }
             }
 
             (0xE, _, 0xA, 0x1) => {
@@ -256,15 +294,15 @@ impl Chip8 {
 
             (0xF, _, 0x6, 0x5) => {
                 // TODO: Must be tested
-                for i in 0..((opcode & 0x0F00) >> 8) {
-                    self.v[i as usize] = self.memory[(self.i + i) as usize];
-                }
+                (0..x).for_each(|i| {
+                    self.v[i] = self.memory[self.i as usize + i];
+                });
 
-                self.i += ((opcode & 0x0F00) >> 8) + 1;
+                self.i += x as u16 + 1;
                 self.pc += 2;
             }
 
-            (_, _, _, _) => panic!("{}: {}", "Unknown opcode", nib_4),
+            (_, _, _, _) => panic!("Unknown opcode: {opcode:#04X}"),
         }
     }
 }
