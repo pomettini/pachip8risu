@@ -50,7 +50,7 @@ impl Chip8 {
         let y = ((opcode & 0x00F0) >> 4) as usize;
         let nnn = opcode & 0x0FFF;
         let kk = (opcode & 0x00FF) as u8;
-        let n = (opcode & 0x000F) as u8;
+        // let n = (opcode & 0x000F) as u8;
 
         match (nib_1, nib_2, nib_3, nib_4) {
             // 00E0 - Clear screen
@@ -89,7 +89,11 @@ impl Chip8 {
 
             // 4XNN - Skips the next instruction if VX does not equal NN.
             (0x4, _, _, _) => {
-                todo!()
+                if self.v[x] as u16 != (opcode & 0x00FF) {
+                    self.pc += 4;
+                } else {
+                    self.pc += 2;
+                }
             }
 
             // 5XY0 - Skips the next instruction if VX equals VY.
@@ -111,6 +115,47 @@ impl Chip8 {
 
             // 8XY_
             (0x8, _, _, 0x0) => {
+                todo!()
+            }
+
+            (0x8, _, _, 0x1) => {
+                todo!()
+            }
+
+            (0x8, _, _, 0x2) => {
+                todo!()
+            }
+
+            (0x8, _, _, 0x3) => {
+                todo!()
+            }
+
+            // 8XY4 - Adds VY to VX. VF is set to 1 when there's a carry, and to 0 when there isn't.
+            (0x8, _, _, 0x4) => {
+                self.v[x] += self.v[y];
+
+                if self.v[y] > (0xFF - self.v[x]) {
+                    self.v[0xF] = 1
+                } else {
+                    self.v[0xF] = 0
+                }
+
+                self.pc += 2;
+            }
+
+            (0x8, _, _, 0x5) => {
+                todo!()
+            }
+
+            (0x8, _, _, 0x6) => {
+                todo!()
+            }
+
+            (0x8, _, _, 0x7) => {
+                todo!()
+            }
+
+            (0x8, _, _, 0xE) => {
                 todo!()
             }
 
@@ -160,8 +205,11 @@ impl Chip8 {
                 self.pc += 2;
             }
 
-            // EX__
             (0xE, _, 0x9, 0xE) => {
+                todo!()
+            }
+
+            (0xE, _, 0xA, 0x1) => {
                 todo!()
             }
 
@@ -216,7 +264,7 @@ impl Chip8 {
                 self.pc += 2;
             }
 
-            (_, _, _, _) => panic!("Unknown opcode"),
+            (_, _, _, _) => panic!("{}: {}", "Unknown opcode", nib_4),
         }
     }
 }
