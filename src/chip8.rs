@@ -30,14 +30,16 @@ const FONT: [u8; 80] = [
 #[derive(Debug)]
 pub struct Chip8 {
     pub i: u16,
-    pub sp: u8,
-    pub stack: [u16; STACK_SIZE],
+    sp: u8,
+    stack: [u16; STACK_SIZE],
     pub memory: [u8; RAM_SIZE],
     pub v: [u8; REGISTERS],
     pub pc: u16,
-    pub dt: u8,
-    pub keys: [bool; KEYS],
-    pub gfx_buffer: [u8; SCREEN_WIDTH * SCREEN_HEIGHT],
+    dt: u8,
+    st: u8,
+    keys: [bool; KEYS],
+    gfx_buffer: [u8; SCREEN_WIDTH * SCREEN_HEIGHT],
+    should_draw: bool,
 }
 
 impl Chip8 {
@@ -50,8 +52,10 @@ impl Chip8 {
             v: [0; REGISTERS],
             pc: 0,
             dt: 0,
+            st: 0,
             keys: [false; KEYS],
             gfx_buffer: [0; SCREEN_WIDTH * SCREEN_HEIGHT],
+            should_draw: false,
         };
 
         // Load font at address 0x000
@@ -67,7 +71,7 @@ impl Chip8 {
         self.memory[ENTRY_POINT..(buf.len() + ENTRY_POINT)].copy_from_slice(buf);
     }
 
-    const fn get_opcode(&self) -> u16 {
+    pub const fn get_opcode(&self) -> u16 {
         (self.memory[self.pc as usize] as u16) << 8 | (self.memory[self.pc as usize + 1] as u16)
     }
 
@@ -89,6 +93,7 @@ impl Chip8 {
             // 00E0 - Clear screen
             (0, 0, 0xE, 0) => {
                 self.gfx_buffer = [0; SCREEN_WIDTH * SCREEN_HEIGHT];
+                self.should_draw = true;
                 self.pc += 2;
             }
 
@@ -131,7 +136,11 @@ impl Chip8 {
 
             // 5XY0 - Skips the next instruction if VX equals VY.
             (0x5, _, _, _) => {
-                todo!()
+                if self.v[x] == self.v[y] {
+                    self.pc += 4;
+                } else {
+                    self.pc += 2;
+                }
             }
 
             // 6XNN - Sets VX to NN.
@@ -146,21 +155,28 @@ impl Chip8 {
                 self.pc += 2;
             }
 
-            // 8XY_
+            // 8XY0 - Sets VX to the value of VY.
             (0x8, _, _, 0x0) => {
-                todo!()
+                self.v[x] = self.v[y];
+                self.pc += 2;
             }
 
+            // 8XY1 - Sets VX to (VX OR VY).
             (0x8, _, _, 0x1) => {
-                todo!()
+                self.v[x] |= self.v[y];
+                self.pc += 2;
             }
 
+            // 8XY2 - Sets VX to (VX AND VY).
             (0x8, _, _, 0x2) => {
-                todo!()
+                self.v[x] &= self.v[y];
+                self.pc += 2;
             }
 
+            // 8XY3 - Sets VX to (VX XOR VY).
             (0x8, _, _, 0x3) => {
-                todo!()
+                self.v[x] ^= self.v[y];
+                self.pc += 2;
             }
 
             // 8XY4 - Adds VY to VX. VF is set to 1 when there's a carry, and to 0 when there isn't.
@@ -176,25 +192,51 @@ impl Chip8 {
                 self.pc += 2;
             }
 
+            // 8XY5 - VY is subtracted from VX. VF is set to 0 when there's a borrow, and 1 when there isn't.
             (0x8, _, _, 0x5) => {
-                todo!()
+                if self.v[y] > self.v[x] {
+                    self.v[0xF] = 0;
+                } else {
+                    self.v[0xF] = 1;
+                }
+
+                self.v[x] -= self.v[y];
+                self.pc += 2;
             }
 
+            // 0x8XY6 - Shifts VX right by one. VF is set to the value of the least significant bit of VX before the shift.
             (0x8, _, _, 0x6) => {
-                todo!()
+                self.v[0xF] = self.v[x] & 0x1;
+                self.v[x] >>= 1;
+                self.pc += 2;
             }
 
+            // 0x8XY7: Sets VX to VY minus VX. VF is set to 0 when there's a borrow, and 1 when there isn't.
             (0x8, _, _, 0x7) => {
-                todo!()
+                if self.v[x] > self.v[y] {
+                    self.v[0xF] = 0;
+                } else {
+                    self.v[0xF] = 1;
+                }
+
+                self.v[x] = self.v[y] - self.v[x];
+                self.pc += 2;
             }
 
+            // 0x8XYE: Shifts VX left by one. VF is set to the value of the most significant bit of VX before the shift.
             (0x8, _, _, 0xE) => {
-                todo!()
+                self.v[0xF] = self.v[x] >> 7;
+                self.v[x] <<= 1;
+                self.pc += 2;
             }
 
             // 9XY0 - Skips the next instruction if VX doesn't equal VY
             (0x9, _, _, _) => {
-                todo!()
+                if self.v[x] != self.v[y] {
+                    self.pc += 4;
+                } else {
+                    self.pc += 2;
+                }
             }
 
             // ANNN - Sets I to the address NNN.
@@ -227,8 +269,8 @@ impl Chip8 {
                 (0..height).for_each(|y| {
                     let pixel = self.memory[(self.i + y) as usize];
                     (0..8).for_each(|x| {
-                        if pixel & (0x80 >> x) >= 1 {
-                            if self.gfx_buffer[(x + vx + (y + vy) * 64) as usize] >= 1 {
+                        if pixel & (0x80 >> x) > 0 {
+                            if self.gfx_buffer[(x + vx + (y + vy) * 64) as usize] > 0 {
                                 self.v[0xF] = 1;
                             }
                             self.gfx_buffer[(x + vx + (y + vy) * 64) as usize] ^= 1;
@@ -236,9 +278,11 @@ impl Chip8 {
                     });
                 });
 
+                self.should_draw = true;
                 self.pc += 2;
             }
 
+            // EX9E - Skips the next instruction if the key stored in VX is pressed.
             (0xE, _, 0x9, 0xE) => {
                 if self.keys[self.v[x] as usize] {
                     self.pc += 4;
@@ -247,8 +291,13 @@ impl Chip8 {
                 }
             }
 
+            // EXA1 - Skips the next instruction if the key stored in VX isn't pressed.
             (0xE, _, 0xA, 0x1) => {
-                todo!()
+                if !self.keys[self.v[x] as usize] {
+                    self.pc += 4;
+                } else {
+                    self.pc += 2;
+                }
             }
 
             // FX07 - Sets VX to the value of the delay timer
@@ -268,9 +317,23 @@ impl Chip8 {
                 self.pc += 2;
             }
 
+            // FX18 - Sets the sound timer to VX
+            (0xF, _, 0x1, 0x8) => {
+                self.st = self.v[x];
+                self.pc += 2;
+            }
+
             // FX1E - Adds VX to I
             (0xF, _, 0x1, 0xE) => {
-                todo!()
+                // VF is set to 1 when range overflow (I+VX>0xFFF), and 0 when there isn't.
+                if (self.i + self.v[x] as u16) > 0xFFF {
+                    self.v[0xF] = 1;
+                } else {
+                    self.v[0xF] = 0;
+                }
+
+                self.i += self.v[x] as u16;
+                self.pc += 2;
             }
 
             // FX29 - Sets I to the location of the sprite for the character in VX.
@@ -282,19 +345,24 @@ impl Chip8 {
             // FX33 - Stores the Binary-coded decimal representation of VX at the addresses I, I plus 1, and I plus 2
             (0xF, _, 0x3, 0x3) => {
                 self.memory[self.i as usize] = self.v[x] / 100;
-                self.memory[(self.i + 1) as usize] = (self.v[x] / 10) % 10;
-                self.memory[(self.i + 2) as usize] = self.v[x] % 10;
+                self.memory[self.i as usize + 1] = (self.v[x] / 10) % 10;
+                self.memory[self.i as usize + 2] = self.v[x] % 10;
                 self.pc += 2;
             }
 
             // FX55 - Stores V0 to VX in memory starting at address I
             (0xF, _, 0x5, 0x5) => {
-                todo!()
+                (0..x + 1).for_each(|i| {
+                    self.memory[self.i as usize + i] = self.v[i];
+                });
+
+                self.i += x as u16 + 1;
+                self.pc += 2;
             }
 
+            // FX65
             (0xF, _, 0x6, 0x5) => {
-                // TODO: Must be tested
-                (0..x).for_each(|i| {
+                (0..=x).for_each(|i| {
                     self.v[i] = self.memory[self.i as usize + i];
                 });
 
@@ -303,6 +371,31 @@ impl Chip8 {
             }
 
             (_, _, _, _) => panic!("Unknown opcode: {opcode:#04X}"),
+        }
+
+        self.decrease_timers();
+    }
+
+    pub fn get_gfx_buffer(&mut self) -> Option<[u8; SCREEN_WIDTH * SCREEN_HEIGHT]> {
+        if self.should_draw {
+            self.should_draw = false;
+            Some(self.gfx_buffer)
+        } else {
+            None
+        }
+    }
+
+    pub fn decrease_timers(&mut self) {
+        if self.dt > 0 {
+            self.dt -= 1;
+        }
+
+        if self.st > 0 {
+            if self.st == 1 {
+                // TODO: Insert real beep here
+                dbg!("BEEP!");
+            }
+            self.st -= 1;
         }
     }
 }
@@ -320,11 +413,12 @@ mod tests {
     fn test_cls() {
         let mut cpu = Chip8::new();
 
-        // Fill the graphics buffer
         cpu.gfx_buffer = [1; SCREEN_WIDTH * SCREEN_HEIGHT];
 
-        // Load CLS
-        cpu.memory[ENTRY_POINT] = 00E0 as u8;
+        let opcode: u16 = 0x00E0;
+
+        cpu.memory[ENTRY_POINT] = ((opcode & 0xFF00) >> 8) as u8;
+        cpu.memory[ENTRY_POINT + 1] = (opcode & 0x00FF) as u8;
 
         cpu.tick();
 
@@ -332,35 +426,63 @@ mod tests {
         assert_eq!(cpu.gfx_buffer, [0; SCREEN_WIDTH * SCREEN_HEIGHT]);
     }
 
-    /*
     #[test]
     fn test_ret() {
         let mut cpu = Chip8::new();
 
-        // Load RET
-        cpu.memory[ENTRY_POINT] = 00EE as u8;
+        // JMP 0x2ABC
+
+        let opcode: u16 = 0x2ABC;
+
+        cpu.memory[ENTRY_POINT] = ((opcode & 0xFF00) >> 8) as u8;
+        cpu.memory[ENTRY_POINT + 1] = (opcode & 0x00FF) as u8;
+
+        cpu.tick();
+
+        // RET
+
+        let opcode: u16 = 0x00EE;
+
+        cpu.memory[0x0ABC] = ((opcode & 0xFF00) >> 8) as u8;
+        cpu.memory[0x0ABC + 1] = (opcode & 0x00FF) as u8;
 
         cpu.tick();
 
         assert_eq!(cpu.pc, (ENTRY_POINT + 2) as u16);
+        assert_eq!(cpu.sp, 0);
     }
 
     #[test]
     fn test_jp_addr() {
         let mut cpu = Chip8::new();
+
+        let opcode: u16 = 0x1A2A;
+
+        cpu.memory[ENTRY_POINT] = ((opcode & 0xFF00) >> 8) as u8;
+        cpu.memory[ENTRY_POINT + 1] = (opcode & 0x00FF) as u8;
+
         cpu.tick();
 
-        assert_eq!(cpu.pc, 100);
+        assert_eq!(cpu.pc, 0x0A2A);
     }
 
     #[test]
     fn test_call_addr() {
         let mut cpu = Chip8::new();
+
+        let opcode: u16 = 0x2ABC;
+
+        cpu.memory[ENTRY_POINT] = ((opcode & 0xFF00) >> 8) as u8;
+        cpu.memory[ENTRY_POINT + 1] = (opcode & 0x00FF) as u8;
+
         cpu.tick();
 
-        assert_eq!(cpu.pc, 100);
+        assert_eq!(cpu.pc, 0x0ABC);
+        assert_eq!(cpu.sp, 1);
+        assert_eq!(cpu.stack[0], ENTRY_POINT as u16);
     }
 
+    /*
     #[test]
     fn test_se_vx_byte() {
         let mut cpu = Chip8::new();

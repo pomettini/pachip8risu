@@ -11,7 +11,7 @@ const WIDTH: usize = 64;
 const HEIGHT: usize = 32;
 
 fn main() {
-    let mut file = File::open("roms/zero.rom").unwrap();
+    let mut file = File::open("roms/test-opcode.rom").unwrap();
     let mut buf = Vec::new();
 
     file.read_to_end(&mut buf).unwrap();
@@ -38,24 +38,25 @@ fn main() {
         panic!("{}", e);
     });
 
+    window.limit_update_rate(Some(std::time::Duration::from_millis(8)));
+
     while window.is_open() && !window.is_key_down(Key::Escape) {
         cpu.tick();
 
         /*
-        // Ditched, too expensive on the CPU, need to find another
         window.set_title(&format!(
-            "Yet Another Chip-8 Emulator - PC: {:#04X} - INDEX: {:#04X} - REG: {:?}",
-            &cpu.pc, &cpu.i, &cpu.v
+            "Yet Another Chip-8 Emulator - {:#04X} - PC: {:#04X} - INDEX: {:#04X} - REG: {:?}",
+            &cpu.get_opcode(),
+            &cpu.pc,
+            &cpu.i,
+            &cpu.v
         ));
          */
 
-        // We unwrap here as we want this code to exit if it fails. Real applications may want to handle this in a different way
-        window
-            .update_with_buffer(
-                &cpu.gfx_buffer.map(|x| u32::from(x) * u32::MAX),
-                WIDTH,
-                HEIGHT,
-            )
-            .unwrap();
+        if let Some(gfx_buffer) = cpu.get_gfx_buffer() {
+            window
+                .update_with_buffer(&gfx_buffer.map(|x| u32::from(x) * u32::MAX), WIDTH, HEIGHT)
+                .unwrap();
+        }
     }
 }
