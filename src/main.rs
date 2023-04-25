@@ -11,7 +11,7 @@ const WIDTH: usize = 64;
 const HEIGHT: usize = 32;
 
 fn main() {
-    let mut file = File::open("roms/test-opcode.rom").unwrap();
+    let mut file = File::open("roms/pong.rom").unwrap();
     let mut buf = Vec::new();
 
     file.read_to_end(&mut buf).unwrap();
@@ -38,7 +38,7 @@ fn main() {
         panic!("{}", e);
     });
 
-    window.limit_update_rate(Some(std::time::Duration::from_millis(8)));
+    window.limit_update_rate(Some(std::time::Duration::from_millis(16)));
 
     while window.is_open() && !window.is_key_down(Key::Escape) {
         cpu.tick();
@@ -51,7 +51,9 @@ fn main() {
             &cpu.i,
             &cpu.v
         ));
-         */
+        */
+
+        // println!("{:#04X}", cpu.get_opcode());
 
         if let Some(gfx_buffer) = cpu.get_gfx_buffer() {
             window

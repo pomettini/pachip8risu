@@ -404,6 +404,14 @@ impl Chip8 {
 mod tests {
     use super::*;
 
+    macro_rules! test_opcode {
+        ($cpu:expr,$opcode:expr,$entry_point:expr) => {{
+            $cpu.memory[$entry_point] = (($opcode & 0xFF00) >> 8) as u8;
+            $cpu.memory[$entry_point + 1] = ($opcode & 0x00FF) as u8;
+            $cpu.tick();
+        }};
+    }
+
     /*
     #[test]
     fn test_sys_addr() {}
@@ -415,12 +423,8 @@ mod tests {
 
         cpu.gfx_buffer = [1; SCREEN_WIDTH * SCREEN_HEIGHT];
 
-        let opcode: u16 = 0x00E0;
-
-        cpu.memory[ENTRY_POINT] = ((opcode & 0xFF00) >> 8) as u8;
-        cpu.memory[ENTRY_POINT + 1] = (opcode & 0x00FF) as u8;
-
-        cpu.tick();
+        // CLS
+        test_opcode!(cpu, 0x00E0, ENTRY_POINT);
 
         assert_eq!(cpu.pc, (ENTRY_POINT + 2) as u16);
         assert_eq!(cpu.gfx_buffer, [0; SCREEN_WIDTH * SCREEN_HEIGHT]);
@@ -430,23 +434,11 @@ mod tests {
     fn test_ret() {
         let mut cpu = Chip8::new();
 
-        // JMP 0x2ABC
-
-        let opcode: u16 = 0x2ABC;
-
-        cpu.memory[ENTRY_POINT] = ((opcode & 0xFF00) >> 8) as u8;
-        cpu.memory[ENTRY_POINT + 1] = (opcode & 0x00FF) as u8;
-
-        cpu.tick();
+        // JMP 0x0ABC
+        test_opcode!(cpu, 0x2ABC, ENTRY_POINT);
 
         // RET
-
-        let opcode: u16 = 0x00EE;
-
-        cpu.memory[0x0ABC] = ((opcode & 0xFF00) >> 8) as u8;
-        cpu.memory[0x0ABC + 1] = (opcode & 0x00FF) as u8;
-
-        cpu.tick();
+        test_opcode!(cpu, 0x00EE, 0x0ABC);
 
         assert_eq!(cpu.pc, (ENTRY_POINT + 2) as u16);
         assert_eq!(cpu.sp, 0);
@@ -456,12 +448,8 @@ mod tests {
     fn test_jp_addr() {
         let mut cpu = Chip8::new();
 
-        let opcode: u16 = 0x1A2A;
-
-        cpu.memory[ENTRY_POINT] = ((opcode & 0xFF00) >> 8) as u8;
-        cpu.memory[ENTRY_POINT + 1] = (opcode & 0x00FF) as u8;
-
-        cpu.tick();
+        // JMP 0x0A2A
+        test_opcode!(cpu, 0x1A2A, ENTRY_POINT);
 
         assert_eq!(cpu.pc, 0x0A2A);
     }
@@ -470,67 +458,68 @@ mod tests {
     fn test_call_addr() {
         let mut cpu = Chip8::new();
 
-        let opcode: u16 = 0x2ABC;
-
-        cpu.memory[ENTRY_POINT] = ((opcode & 0xFF00) >> 8) as u8;
-        cpu.memory[ENTRY_POINT + 1] = (opcode & 0x00FF) as u8;
-
-        cpu.tick();
+        test_opcode!(cpu, 0x2ABC, ENTRY_POINT);
 
         assert_eq!(cpu.pc, 0x0ABC);
         assert_eq!(cpu.sp, 1);
         assert_eq!(cpu.stack[0], ENTRY_POINT as u16);
     }
 
-    /*
     #[test]
     fn test_se_vx_byte() {
         let mut cpu = Chip8::new();
-        cpu.tick();
 
-        assert_eq!(cpu.pc, 100);
+        test_opcode!(cpu, 0x3000, ENTRY_POINT);
+
+        assert_eq!(cpu.pc, ENTRY_POINT as u16);
     }
 
     #[test]
     fn test_sne_vx_byte() {
         let mut cpu = Chip8::new();
-        cpu.tick();
 
-        assert_eq!(cpu.pc, 100);
+        test_opcode!(cpu, 0x4000, ENTRY_POINT);
+
+        assert_eq!(cpu.pc, ENTRY_POINT as u16);
     }
 
     #[test]
     fn test_se_vx_vy() {
         let mut cpu = Chip8::new();
-        cpu.tick();
 
-        assert_eq!(cpu.pc, 100);
+        test_opcode!(cpu, 0x5000, ENTRY_POINT);
+
+        assert_eq!(cpu.pc, ENTRY_POINT as u16);
     }
 
     #[test]
     fn test_ld_vx_byte() {
         let mut cpu = Chip8::new();
-        cpu.tick();
 
-        assert_eq!(cpu.pc, 100);
+        test_opcode!(cpu, 0x6000, ENTRY_POINT);
+
+        assert_eq!(cpu.pc, ENTRY_POINT as u16);
     }
 
     #[test]
     fn test_add_vx_byte() {
         let mut cpu = Chip8::new();
-        cpu.tick();
 
-        assert_eq!(cpu.pc, 100);
+        test_opcode!(cpu, 0x7000, ENTRY_POINT);
+
+        assert_eq!(cpu.pc, ENTRY_POINT as u16);
     }
 
     #[test]
     fn test_ld_vx_vy() {
         let mut cpu = Chip8::new();
-        cpu.tick();
 
-        assert_eq!(cpu.pc, 100);
+        test_opcode!(cpu, 0x8000, ENTRY_POINT);
+
+        assert_eq!(cpu.pc, ENTRY_POINT as u16);
     }
 
+    /*
     #[test]
     fn test_or_vx_vy() {
         let mut cpu = Chip8::new();
