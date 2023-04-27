@@ -1,3 +1,5 @@
+#![no_std]
+
 extern crate rand;
 
 const REGISTERS: usize = 16;
@@ -38,11 +40,12 @@ pub struct Chip8 {
     dt: u8,
     st: u8,
     keys: [bool; KEYS],
-    gfx_buffer: [u8; SCREEN_WIDTH * SCREEN_HEIGHT],
+    gfx_buffer: [bool; SCREEN_WIDTH * SCREEN_HEIGHT],
     should_draw: bool,
 }
 
 impl Chip8 {
+    #[must_use]
     pub fn new() -> Self {
         let mut cpu = Self {
             i: 0,
@@ -54,7 +57,7 @@ impl Chip8 {
             dt: 0,
             st: 0,
             keys: [false; KEYS],
-            gfx_buffer: [0; SCREEN_WIDTH * SCREEN_HEIGHT],
+            gfx_buffer: [false; SCREEN_WIDTH * SCREEN_HEIGHT],
             should_draw: false,
         };
 
@@ -92,7 +95,7 @@ impl Chip8 {
         match (nib_1, nib_2, nib_3, nib_4) {
             // 00E0 - Clear screen
             (0, 0, 0xE, 0) => {
-                self.gfx_buffer = [0; SCREEN_WIDTH * SCREEN_HEIGHT];
+                self.gfx_buffer = [false; SCREEN_WIDTH * SCREEN_HEIGHT];
                 self.should_draw = true;
                 self.pc += 2;
             }
@@ -254,7 +257,8 @@ impl Chip8 {
             // CXNN - Sets VX to a random number, masked by NN.
             (0xC, _, _, _) => {
                 // TODO: Needs to be tested
-                self.v[x] = (rand::random::<u8>() % 0xFF + 1) & kk;
+                // self.v[x] = (rand::random::<u8>() % 0xFF + 1) & kk;
+                self.v[x] = (0 % 0xFF + 1) & kk;
                 self.pc += 2;
             }
 
@@ -270,10 +274,10 @@ impl Chip8 {
                     let pixel = self.memory[(self.i + y) as usize];
                     (0..8).for_each(|x| {
                         if pixel & (0x80 >> x) > 0 {
-                            if self.gfx_buffer[(x + vx + (y + vy) * 64) as usize] > 0 {
+                            if self.gfx_buffer[(x + vx + (y + vy) * 64) as usize] {
                                 self.v[0xF] = 1;
                             }
-                            self.gfx_buffer[(x + vx + (y + vy) * 64) as usize] ^= 1;
+                            self.gfx_buffer[(x + vx + (y + vy) * 64) as usize] ^= true;
                         }
                     });
                 });
@@ -352,7 +356,7 @@ impl Chip8 {
 
             // FX55 - Stores V0 to VX in memory starting at address I
             (0xF, _, 0x5, 0x5) => {
-                (0..x + 1).for_each(|i| {
+                (0..=x).for_each(|i| {
                     self.memory[self.i as usize + i] = self.v[i];
                 });
 
@@ -376,7 +380,7 @@ impl Chip8 {
         self.decrease_timers();
     }
 
-    pub fn get_gfx_buffer(&mut self) -> Option<[u8; SCREEN_WIDTH * SCREEN_HEIGHT]> {
+    pub fn draw(&mut self) -> Option<[bool; SCREEN_WIDTH * SCREEN_HEIGHT]> {
         if self.should_draw {
             self.should_draw = false;
             Some(self.gfx_buffer)
@@ -393,7 +397,7 @@ impl Chip8 {
         if self.st > 0 {
             if self.st == 1 {
                 // TODO: Insert real beep here
-                dbg!("BEEP!");
+                // dbg!("BEEP!");
             }
             self.st -= 1;
         }
@@ -421,13 +425,13 @@ mod tests {
     fn test_cls() {
         let mut cpu = Chip8::new();
 
-        cpu.gfx_buffer = [1; SCREEN_WIDTH * SCREEN_HEIGHT];
+        cpu.gfx_buffer = [true; SCREEN_WIDTH * SCREEN_HEIGHT];
 
         // CLS
         test_opcode!(cpu, 0x00E0, ENTRY_POINT);
 
         assert_eq!(cpu.pc, (ENTRY_POINT + 2) as u16);
-        assert_eq!(cpu.gfx_buffer, [0; SCREEN_WIDTH * SCREEN_HEIGHT]);
+        assert_eq!(cpu.gfx_buffer, [false; SCREEN_WIDTH * SCREEN_HEIGHT]);
     }
 
     #[test]

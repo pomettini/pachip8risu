@@ -1,8 +1,7 @@
+extern crate mchip8;
 extern crate minifb;
 
-mod chip8;
-
-use chip8::Chip8;
+use mchip8::Chip8;
 use std::{fs::File, io::Read};
 
 use minifb::{Key, Scale, ScaleMode, Window, WindowOptions};
@@ -11,7 +10,7 @@ const WIDTH: usize = 64;
 const HEIGHT: usize = 32;
 
 fn main() {
-    let mut file = File::open("roms/pong.rom").unwrap();
+    let mut file = File::open("roms/test-opcode.rom").unwrap();
     let mut buf = Vec::new();
 
     file.read_to_end(&mut buf).unwrap();
@@ -38,7 +37,7 @@ fn main() {
         panic!("{}", e);
     });
 
-    window.limit_update_rate(Some(std::time::Duration::from_millis(16)));
+    window.limit_update_rate(Some(std::time::Duration::from_millis(8)));
 
     while window.is_open() && !window.is_key_down(Key::Escape) {
         cpu.tick();
@@ -53,9 +52,7 @@ fn main() {
         ));
         */
 
-        // println!("{:#04X}", cpu.get_opcode());
-
-        if let Some(gfx_buffer) = cpu.get_gfx_buffer() {
+        if let Some(gfx_buffer) = cpu.draw() {
             window
                 .update_with_buffer(&gfx_buffer.map(|x| u32::from(x) * u32::MAX), WIDTH, HEIGHT)
                 .unwrap();
