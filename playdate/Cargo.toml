@@ -12,11 +12,13 @@ panic_immediate_abort = false
 panic = "abort"
 opt-level = 'z'
 lto = true
+overflow-checks = false
 
 [profile.release]
 panic = "abort"
 opt-level = 'z'
 lto = true
+overflow-checks = false
 
 [lib]
 crate-type = ["staticlib", "cdylib"]

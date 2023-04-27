@@ -1,13 +1,12 @@
 #![no_std]
 
-extern crate rand;
-
 const REGISTERS: usize = 16;
 const STACK_SIZE: usize = 16;
 const KEYS: usize = 16;
 const RAM_SIZE: usize = 4096;
 const SCREEN_WIDTH: usize = 64;
 const SCREEN_HEIGHT: usize = 32;
+const SCREEN_SIZE: usize = SCREEN_WIDTH * SCREEN_HEIGHT;
 const ENTRY_POINT: usize = 512;
 
 const FONT: [u8; 80] = [
@@ -39,8 +38,8 @@ pub struct Chip8 {
     pub pc: u16,
     dt: u8,
     st: u8,
-    keys: [bool; KEYS],
-    gfx_buffer: [bool; SCREEN_WIDTH * SCREEN_HEIGHT],
+    pub keys: [bool; KEYS],
+    gfx_buffer: [bool; SCREEN_SIZE],
     should_draw: bool,
 }
 
@@ -57,7 +56,7 @@ impl Chip8 {
             dt: 0,
             st: 0,
             keys: [false; KEYS],
-            gfx_buffer: [false; SCREEN_WIDTH * SCREEN_HEIGHT],
+            gfx_buffer: [false; SCREEN_SIZE],
             should_draw: false,
         };
 
@@ -95,7 +94,7 @@ impl Chip8 {
         match (nib_1, nib_2, nib_3, nib_4) {
             // 00E0 - Clear screen
             (0, 0, 0xE, 0) => {
-                self.gfx_buffer = [false; SCREEN_WIDTH * SCREEN_HEIGHT];
+                self.gfx_buffer = [false; SCREEN_SIZE];
                 self.should_draw = true;
                 self.pc += 2;
             }
@@ -256,9 +255,9 @@ impl Chip8 {
 
             // CXNN - Sets VX to a random number, masked by NN.
             (0xC, _, _, _) => {
-                // TODO: Needs to be tested
-                // self.v[x] = (rand::random::<u8>() % 0xFF + 1) & kk;
-                self.v[x] = (0 % 0xFF + 1) & kk;
+                // TODO: Needs a random number
+                // self.v[x] = (RAND % 0xFF + 1) & kk;
+                self.v[x] = 1 & kk;
                 self.pc += 2;
             }
 
@@ -274,10 +273,13 @@ impl Chip8 {
                     let pixel = self.memory[(self.i + y) as usize];
                     (0..8).for_each(|x| {
                         if pixel & (0x80 >> x) > 0 {
-                            if self.gfx_buffer[(x + vx + (y + vy) * 64) as usize] {
+                            let index = (x + vx + (y + vy) * SCREEN_WIDTH as u16)
+                                .clamp(0, SCREEN_SIZE as u16 - 1)
+                                as usize;
+                            if self.gfx_buffer[index] {
                                 self.v[0xF] = 1;
                             }
-                            self.gfx_buffer[(x + vx + (y + vy) * 64) as usize] ^= true;
+                            self.gfx_buffer[index] ^= true;
                         }
                     });
                 });
@@ -312,7 +314,20 @@ impl Chip8 {
 
             // FX0A - A key press is awaited, and then stored in VX
             (0xF, _, 0x0, 0xA) => {
-                todo!()
+                let mut key_pressed = false;
+
+                for i in 0..KEYS {
+                    if self.keys[i] {
+                        self.v[x] = 1;
+                        key_pressed = true;
+                    }
+                }
+
+                if !key_pressed {
+                    return;
+                }
+
+                self.pc += 2;
             }
 
             // FX15 - Sets the delay timer to VX

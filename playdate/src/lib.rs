@@ -4,6 +4,7 @@ extern crate alloc;
 extern crate mchip8;
 
 use crankstart::geometry::ScreenRect;
+use crankstart_sys::PDButtons;
 use euclid::{Point2D, Size2D};
 use mchip8::Chip8;
 
@@ -26,12 +27,22 @@ struct State {
     cpu: Chip8,
 }
 
+macro_rules! WHITE {
+    () => {
+        LCDColor::Solid(LCDSolidColor::kColorWhite)
+    };
+}
+
+macro_rules! BLACK {
+    () => {
+        LCDColor::Solid(LCDSolidColor::kColorBlack)
+    };
+}
+
 impl State {
     pub fn new(_playdate: &Playdate) -> Result<Box<Self>, Error> {
-        crankstart::display::Display::get().set_refresh_rate(50.0)?;
-
         let mut cpu = Chip8::new();
-        cpu.load_rom(include_bytes!("../../roms/space-invaders.rom"));
+        cpu.load_rom(include_bytes!("../../roms/breakout.rom"));
 
         Ok(Box::new(Self { cpu }))
     }
@@ -39,25 +50,34 @@ impl State {
 
 impl Game for State {
     fn update(&mut self, _playdate: &mut Playdate) -> Result<(), Error> {
-        let graphics = Graphics::get();
-
         System::get().draw_fps(0, 0)?;
 
-        for _ in 0..5 {
+        for _ in 0..10 {
             self.cpu.tick();
+        }
+
+        let (_, pressed, released) = System::get().get_button_state().unwrap();
+
+        match pressed {
+            PDButtons::kButtonLeft => self.cpu.keys[4] = true,
+            PDButtons::kButtonRight => self.cpu.keys[6] = true,
+            _ => (),
+        }
+
+        match released {
+            PDButtons::kButtonLeft => self.cpu.keys[4] = false,
+            PDButtons::kButtonRight => self.cpu.keys[6] = false,
+            _ => (),
         }
 
         if let Some(gfx_buffer) = self.cpu.draw() {
             for p in 0..WIDTH * HEIGHT {
-                let x = p % 64;
-                let y = p / 64;
-                graphics
+                let x = 8 + (p % 64) * SCALE;
+                let y = 24 + (p / 64) * SCALE;
+                Graphics::get()
                     .fill_rect(
-                        ScreenRect::new(
-                            Point2D::new(x * SCALE, y * SCALE),
-                            Size2D::new(SCALE, SCALE),
-                        ),
-                        LCDColor::Solid(draw_pixel_color(gfx_buffer[p as usize])),
+                        ScreenRect::new(Point2D::new(x, y), Size2D::new(SCALE, SCALE)),
+                        draw_pixel_color(gfx_buffer[p as usize]),
                     )
                     .unwrap();
             }
@@ -67,11 +87,11 @@ impl Game for State {
     }
 }
 
-const fn draw_pixel_color(is_on: bool) -> LCDSolidColor {
+const fn draw_pixel_color(is_on: bool) -> LCDColor {
     if is_on {
-        LCDSolidColor::kColorBlack
+        BLACK!()
     } else {
-        LCDSolidColor::kColorWhite
+        WHITE!()
     }
 }
 
