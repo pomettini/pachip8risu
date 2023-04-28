@@ -42,7 +42,7 @@ macro_rules! BLACK {
 impl State {
     pub fn new(_playdate: &Playdate) -> Result<Box<Self>, Error> {
         let mut cpu = Chip8::new();
-        cpu.load_rom(include_bytes!("../../roms/breakout.rom"));
+        cpu.load_rom(include_bytes!("../../roms/space-invaders.rom"), Some(10));
 
         Ok(Box::new(Self { cpu }))
     }
@@ -52,20 +52,20 @@ impl Game for State {
     fn update(&mut self, _playdate: &mut Playdate) -> Result<(), Error> {
         System::get().draw_fps(0, 0)?;
 
-        for _ in 0..10 {
-            self.cpu.tick();
-        }
+        self.cpu.update();
 
         let (_, pressed, released) = System::get().get_button_state().unwrap();
 
         match pressed {
             PDButtons::kButtonLeft => self.cpu.keys[4] = true,
+            PDButtons::kButtonA => self.cpu.keys[5] = true,
             PDButtons::kButtonRight => self.cpu.keys[6] = true,
             _ => (),
         }
 
         match released {
             PDButtons::kButtonLeft => self.cpu.keys[4] = false,
+            PDButtons::kButtonA => self.cpu.keys[5] = false,
             PDButtons::kButtonRight => self.cpu.keys[6] = false,
             _ => (),
         }

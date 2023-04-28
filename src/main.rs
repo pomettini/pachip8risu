@@ -10,13 +10,13 @@ const WIDTH: usize = 64;
 const HEIGHT: usize = 32;
 
 fn main() {
-    let mut file = File::open("roms/breakout.rom").unwrap();
+    let mut file = File::open("roms/space-invaders.rom").unwrap();
     let mut buf = Vec::new();
 
     file.read_to_end(&mut buf).unwrap();
 
     let mut cpu = Chip8::new();
-    cpu.load_rom(&buf);
+    cpu.load_rom(&buf, Some(10));
 
     let mut window = Window::new(
         "Yet Another Chip-8 Emulator",
@@ -37,10 +37,10 @@ fn main() {
         panic!("{}", e);
     });
 
-    window.limit_update_rate(Some(std::time::Duration::from_millis(16)));
+    window.limit_update_rate(Some(std::time::Duration::from_micros(16600)));
 
     while window.is_open() && !window.is_key_down(Key::Escape) {
-        cpu.tick();
+        cpu.update();
 
         /*
         window.set_title(&format!(

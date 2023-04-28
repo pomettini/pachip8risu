@@ -8,7 +8,9 @@ const SCREEN_WIDTH: usize = 64;
 const SCREEN_HEIGHT: usize = 32;
 const SCREEN_SIZE: usize = SCREEN_WIDTH * SCREEN_HEIGHT;
 const ENTRY_POINT: usize = 512;
+const DEFAULT_TICK_RATE: u16 = 10;
 
+// Chip-8
 const FONT: [u8; 80] = [
     0xF0, 0x90, 0x90, 0x90, 0xF0, //0
     0x20, 0x60, 0x20, 0x20, 0x70, //1
@@ -28,56 +30,97 @@ const FONT: [u8; 80] = [
     0xF0, 0x80, 0xF0, 0x80, 0x80, //F
 ];
 
+// Super-Chip and variants
+const BIG_FONT: [u8; 160] = [
+    0xFF, 0xFF, 0xC3, 0xC3, 0xC3, 0xC3, 0xC3, 0xC3, 0xFF, 0xFF, // 0
+    0x18, 0x78, 0x78, 0x18, 0x18, 0x18, 0x18, 0x18, 0xFF, 0xFF, // 1
+    0xFF, 0xFF, 0x03, 0x03, 0xFF, 0xFF, 0xC0, 0xC0, 0xFF, 0xFF, // 2
+    0xFF, 0xFF, 0x03, 0x03, 0xFF, 0xFF, 0x03, 0x03, 0xFF, 0xFF, // 3
+    0xC3, 0xC3, 0xC3, 0xC3, 0xFF, 0xFF, 0x03, 0x03, 0x03, 0x03, // 4
+    0xFF, 0xFF, 0xC0, 0xC0, 0xFF, 0xFF, 0x03, 0x03, 0xFF, 0xFF, // 5
+    0xFF, 0xFF, 0xC0, 0xC0, 0xFF, 0xFF, 0xC3, 0xC3, 0xFF, 0xFF, // 6
+    0xFF, 0xFF, 0x03, 0x03, 0x06, 0x0C, 0x18, 0x18, 0x18, 0x18, // 7
+    0xFF, 0xFF, 0xC3, 0xC3, 0xFF, 0xFF, 0xC3, 0xC3, 0xFF, 0xFF, // 8
+    0xFF, 0xFF, 0xC3, 0xC3, 0xFF, 0xFF, 0x03, 0x03, 0xFF, 0xFF, // 9
+    0x7E, 0xFF, 0xC3, 0xC3, 0xC3, 0xFF, 0xFF, 0xC3, 0xC3, 0xC3, // A
+    0xFC, 0xFC, 0xC3, 0xC3, 0xFC, 0xFC, 0xC3, 0xC3, 0xFC, 0xFC, // B
+    0x3C, 0xFF, 0xC3, 0xC0, 0xC0, 0xC0, 0xC0, 0xC3, 0xFF, 0x3C, // C
+    0xFC, 0xFE, 0xC3, 0xC3, 0xC3, 0xC3, 0xC3, 0xC3, 0xFE, 0xFC, // D
+    0xFF, 0xFF, 0xC0, 0xC0, 0xFF, 0xFF, 0xC0, 0xC0, 0xFF, 0xFF, // E
+    0xFF, 0xFF, 0xC0, 0xC0, 0xFF, 0xFF, 0xC0, 0xC0, 0xC0, 0xC0, // F
+];
+
 #[derive(Debug)]
 pub struct Chip8 {
     pub i: u16,
     sp: u8,
     stack: [u16; STACK_SIZE],
-    pub memory: [u8; RAM_SIZE],
     pub v: [u8; REGISTERS],
     pub pc: u16,
-    dt: u8,
+    pub dt: u8,
     st: u8,
     pub keys: [bool; KEYS],
+
+    // RAM
+    pub memory: [u8; RAM_SIZE],
     gfx_buffer: [bool; SCREEN_SIZE],
+
+    // Needed for the emulator
+    tick_rate: u16,
     should_draw: bool,
+    hi_res: bool,
 }
 
 impl Chip8 {
     #[must_use]
     pub fn new() -> Self {
-        let mut cpu = Self {
+        Self {
             i: 0,
             sp: 0,
             stack: [0; STACK_SIZE],
-            memory: [0; RAM_SIZE],
             v: [0; REGISTERS],
-            pc: 0,
+            pc: ENTRY_POINT as u16,
             dt: 0,
             st: 0,
             keys: [false; KEYS],
+            memory: [0; RAM_SIZE],
             gfx_buffer: [false; SCREEN_SIZE],
+            tick_rate: DEFAULT_TICK_RATE,
             should_draw: false,
-        };
+            hi_res: false,
+        }
+    }
+
+    pub fn reset(&mut self) {
+        self.pc = ENTRY_POINT as u16;
+        self.sp = 0;
+        self.gfx_buffer = [false; SCREEN_SIZE];
+        self.memory = [0; RAM_SIZE];
+    }
+
+    pub fn load_rom(&mut self, buf: &[u8], tick_rate: Option<u16>) {
+        self.memory[ENTRY_POINT..(buf.len() + ENTRY_POINT)].copy_from_slice(buf);
 
         // Load font at address 0x000
-        cpu.memory[0..FONT.len()].copy_from_slice(&FONT);
+        self.memory[0..FONT.len()].copy_from_slice(&FONT);
 
-        // Set entry point at address 0x200
-        cpu.pc = ENTRY_POINT as u16;
-
-        cpu
+        if let Some(x) = tick_rate {
+            self.tick_rate = x
+        }
     }
 
-    pub fn load_rom(&mut self, buf: &[u8]) {
-        self.memory[ENTRY_POINT..(buf.len() + ENTRY_POINT)].copy_from_slice(buf);
-    }
-
-    pub const fn get_opcode(&self) -> u16 {
+    const fn get_opcode(&self) -> u16 {
         (self.memory[self.pc as usize] as u16) << 8 | (self.memory[self.pc as usize + 1] as u16)
     }
 
-    pub fn tick(&mut self) {
+    pub fn update(&mut self) {
+        self.update_timers();
+        (0..self.tick_rate).for_each(|_| {
+            self.tick();
+        });
+    }
+
+    fn tick(&mut self) {
         let opcode = self.get_opcode();
 
         let nib_1 = (opcode & 0xF000) >> 12;
@@ -391,8 +434,6 @@ impl Chip8 {
 
             (_, _, _, _) => panic!("Unknown opcode: {opcode:#04X}"),
         }
-
-        self.decrease_timers();
     }
 
     pub fn draw(&mut self) -> Option<[bool; SCREEN_WIDTH * SCREEN_HEIGHT]> {
@@ -404,7 +445,7 @@ impl Chip8 {
         }
     }
 
-    pub fn decrease_timers(&mut self) {
+    pub fn update_timers(&mut self) {
         if self.dt > 0 {
             self.dt -= 1;
         }
