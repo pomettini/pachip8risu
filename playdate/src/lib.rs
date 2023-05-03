@@ -42,7 +42,10 @@ macro_rules! BLACK {
 impl State {
     pub fn new(_playdate: &Playdate) -> Result<Box<Self>, Error> {
         let mut cpu = Chip8::new();
-        cpu.load_rom(include_bytes!("../../roms/space-invaders.rom"), Some(10));
+        cpu.load_rom(include_bytes!("../../roms/maze.rom"), Some(10));
+
+        let (_, ms) = System::get().get_seconds_since_epoch().unwrap();
+        cpu.set_random_seed(ms as u64);
 
         Ok(Box::new(Self { cpu }))
     }
@@ -81,6 +84,10 @@ impl Game for State {
                     )
                     .unwrap();
             }
+        }
+
+        if self.cpu.play_sound() {
+            // TODO: Add beep
         }
 
         Ok(())

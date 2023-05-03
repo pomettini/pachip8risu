@@ -1,61 +1,59 @@
 extern crate mchip8;
-extern crate minifb;
+extern crate ruscii;
 
 use mchip8::Chip8;
 use std::{fs::File, io::Read};
 
-use minifb::{Key, Scale, ScaleMode, Window, WindowOptions};
+use ruscii::app::{App, Config, State};
+use ruscii::drawing::Pencil;
+use ruscii::gui::FPSCounter;
+use ruscii::keyboard::{Key, KeyEvent};
+use ruscii::spatial::Vec2;
+use ruscii::terminal::Window;
+use std::time::{SystemTime, UNIX_EPOCH};
 
-const WIDTH: usize = 64;
-const HEIGHT: usize = 32;
+const WIDTH: i32 = 64;
+const HEIGHT: i32 = 32;
 
 fn main() {
-    let mut file = File::open("roms/space-invaders.rom").unwrap();
+    let mut file = File::open("roms/maze.rom").unwrap();
     let mut buf = Vec::new();
 
     file.read_to_end(&mut buf).unwrap();
 
     let mut cpu = Chip8::new();
     cpu.load_rom(&buf, Some(10));
+    cpu.set_random_seed(
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs(),
+    );
 
-    let mut window = Window::new(
-        "Yet Another Chip-8 Emulator",
-        WIDTH,
-        HEIGHT,
-        WindowOptions {
-            borderless: false,
-            transparency: false,
-            title: true,
-            resize: true,
-            scale: Scale::X16,
-            scale_mode: ScaleMode::AspectRatioStretch,
-            topmost: false,
-            none: false,
-        },
-    )
-    .unwrap_or_else(|e| {
-        panic!("{}", e);
-    });
+    let mut fps_counter = FPSCounter::default();
+    let mut app = App::config(Config::new().fps(60));
 
-    window.limit_update_rate(Some(std::time::Duration::from_micros(16600)));
+    app.run(|app_state: &mut State, window: &mut Window| {
+        for key_event in app_state.keyboard().last_key_events() {
+            if let KeyEvent::Pressed(Key::Q | Key::Esc) = key_event {
+                app_state.stop();
+            }
+        }
 
-    while window.is_open() && !window.is_key_down(Key::Escape) {
+        fps_counter.update();
+
         cpu.update();
 
-        /*
-        window.set_title(&format!(
-            "Yet Another Chip-8 Emulator - {:#04X} - PC: {:#04X} - INDEX: {:#04X} - REG: {:?}",
-            &cpu.get_opcode(),
-            &cpu.pc,
-            &cpu.i,
-            &cpu.v
-        ));
-        */
+        let mut pencil = Pencil::new(window.canvas_mut());
 
-        if let Some(gfx_buffer) = cpu.draw() {
-            window
-                .update_with_buffer(&gfx_buffer.map(|x| u32::from(x) * u32::MAX), WIDTH, HEIGHT)
-                .unwrap();
-        }
-    }
+        (0..WIDTH * HEIGHT).for_each(|p| {
+            let x = p % 64;
+            let y = 2 + p / 64;
+            if cpu.draw_unoptimized()[p as usize] {
+                pencil.draw_text("█", Vec2::xy(x, y));
+            }
+        });
+
+        pencil.draw_text(&format!("FPS: {}", fps_counter.count()), Vec2::xy(0, 0));
+    });
 }

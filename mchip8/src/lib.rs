@@ -1,5 +1,11 @@
 #![no_std]
 
+extern crate rand;
+
+use rand::rngs::SmallRng;
+use rand::RngCore;
+use rand::SeedableRng;
+
 const REGISTERS: usize = 16;
 const STACK_SIZE: usize = 16;
 const KEYS: usize = 16;
@@ -52,20 +58,21 @@ const BIG_FONT: [u8; 160] = [
 
 #[derive(Debug)]
 pub struct Chip8 {
-    pub i: u16,
+    i: u16,
     sp: u8,
     stack: [u16; STACK_SIZE],
-    pub v: [u8; REGISTERS],
-    pub pc: u16,
-    pub dt: u8,
+    v: [u8; REGISTERS],
+    pc: u16,
+    dt: u8,
     st: u8,
     pub keys: [bool; KEYS],
 
     // RAM
-    pub memory: [u8; RAM_SIZE],
+    memory: [u8; RAM_SIZE],
     gfx_buffer: [bool; SCREEN_SIZE],
 
     // Needed for the emulator
+    rnd_seed: Option<SmallRng>,
     tick_rate: u16,
     should_draw: bool,
     hi_res: bool,
@@ -85,6 +92,7 @@ impl Chip8 {
             keys: [false; KEYS],
             memory: [0; RAM_SIZE],
             gfx_buffer: [false; SCREEN_SIZE],
+            rnd_seed: None,
             tick_rate: DEFAULT_TICK_RATE,
             should_draw: false,
             hi_res: false,
@@ -105,8 +113,13 @@ impl Chip8 {
         self.memory[0..FONT.len()].copy_from_slice(&FONT);
 
         if let Some(x) = tick_rate {
-            self.tick_rate = x
+            self.tick_rate = x;
         }
+    }
+
+    pub fn set_random_seed(&mut self, seed: u64) {
+        let small_rng = SmallRng::seed_from_u64(seed);
+        self.rnd_seed = Some(small_rng);
     }
 
     const fn get_opcode(&self) -> u16 {
@@ -118,6 +131,33 @@ impl Chip8 {
         (0..self.tick_rate).for_each(|_| {
             self.tick();
         });
+    }
+
+    pub fn update_timers(&mut self) {
+        if self.dt > 0 {
+            self.dt -= 1;
+        }
+
+        if self.st > 0 {
+            self.st -= 1;
+        }
+    }
+
+    pub fn draw(&mut self) -> Option<[bool; SCREEN_SIZE]> {
+        if self.should_draw {
+            self.should_draw = false;
+            Some(self.gfx_buffer)
+        } else {
+            None
+        }
+    }
+
+    pub const fn draw_unoptimized(&self) -> [bool; SCREEN_SIZE] {
+        self.gfx_buffer
+    }
+
+    pub const fn play_sound(&self) -> bool {
+        self.st == 1
     }
 
     fn tick(&mut self) {
@@ -299,8 +339,12 @@ impl Chip8 {
             // CXNN - Sets VX to a random number, masked by NN.
             (0xC, _, _, _) => {
                 // TODO: Needs a random number
+                match self.rnd_seed {
+                    Some(ref mut seed) => self.v[x] = (seed.next_u32() as u8 % 0xFF + 1) & kk,
+                    None => self.v[x] = 1 & kk,
+                }
                 // self.v[x] = (RAND % 0xFF + 1) & kk;
-                self.v[x] = 1 & kk;
+                // self.v[x] = 1 & kk;
                 self.pc += 2;
             }
 
@@ -433,29 +477,6 @@ impl Chip8 {
             }
 
             (_, _, _, _) => panic!("Unknown opcode: {opcode:#04X}"),
-        }
-    }
-
-    pub fn draw(&mut self) -> Option<[bool; SCREEN_WIDTH * SCREEN_HEIGHT]> {
-        if self.should_draw {
-            self.should_draw = false;
-            Some(self.gfx_buffer)
-        } else {
-            None
-        }
-    }
-
-    pub fn update_timers(&mut self) {
-        if self.dt > 0 {
-            self.dt -= 1;
-        }
-
-        if self.st > 0 {
-            if self.st == 1 {
-                // TODO: Insert real beep here
-                // dbg!("BEEP!");
-            }
-            self.st -= 1;
         }
     }
 }
