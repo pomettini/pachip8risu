@@ -16,7 +16,7 @@ const WIDTH: i32 = 64;
 const HEIGHT: i32 = 32;
 
 fn main() {
-    let mut file = File::open("roms/maze.rom").unwrap();
+    let mut file = File::open("roms/test-opcode.rom").unwrap();
     let mut buf = Vec::new();
 
     file.read_to_end(&mut buf).unwrap();
@@ -29,6 +29,8 @@ fn main() {
             .unwrap()
             .as_secs(),
     );
+
+    // cpu.update();
 
     let mut fps_counter = FPSCounter::default();
     let mut app = App::config(Config::new().fps(60));

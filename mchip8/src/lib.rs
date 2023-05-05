@@ -152,123 +152,178 @@ impl Chip8 {
         }
     }
 
+    #[must_use]
     pub const fn draw_unoptimized(&self) -> [bool; SCREEN_SIZE] {
         self.gfx_buffer
     }
 
+    #[must_use]
     pub const fn play_sound(&self) -> bool {
         self.st == 1
     }
 
+    fn cls(&mut self) {
+        // 00E0 - Clear screen
+        self.gfx_buffer = [false; SCREEN_SIZE];
+        self.should_draw = true;
+        self.pc += 2;
+    }
+
+    fn ret(&mut self) {
+        // 00EE - Return from subroutine
+        self.sp -= 1;
+        self.pc = self.stack[self.sp as usize];
+        self.pc += 2;
+    }
+
+    fn jp_addr(&mut self, nnn: u16) {
+        // 1NNN - Jumps to address NNN
+        self.pc = nnn;
+    }
+
+    fn call_addr(&mut self, nnn: u16) {
+        // 2NNN - Calls subroutine at NNN
+        self.stack[self.sp as usize] = self.pc;
+        self.sp += 1;
+        self.pc = nnn;
+    }
+
+    fn se_vx_byte(&mut self, x: u8, kk: u8) {
+        // 3XNN - Skips the next instruction if VX equals NN.
+        if self.v[x as usize] == kk {
+            self.pc += 4;
+        } else {
+            self.pc += 2;
+        }
+    }
+
+    fn sne_vx_byte(&mut self, x: u8, kk: u8) {
+        // 4XNN - Skips the next instruction if VX does not equal NN.
+        if self.v[x as usize] != kk {
+            self.pc += 4;
+        } else {
+            self.pc += 2;
+        }
+    }
+
+    fn se_vx_vy(&mut self, x: u8, y: u8) {
+        // 5XY0 - Skips the next instruction if VX equals VY.
+        if self.v[x as usize] == self.v[y as usize] {
+            self.pc += 4;
+        } else {
+            self.pc += 2;
+        }
+    }
+
+    // ---
+
+    fn drw_vx_vy_nibble(&mut self, x: u8, y: u8, opcode: u16) {
+        // DXYN: Draws a sprite at coordinate (VX, VY) that has a width of 8 pixels and a height of N pixels.
+        let vx = self.v[x as usize] as u16;
+        let vy = self.v[y as usize] as u16;
+        let height = opcode & 0x000F;
+        self.v[0xF] &= 0;
+
+        // TODO: Needs refactor
+        (0..height).for_each(|y| {
+            let pixel = self.memory[(self.i + y) as usize];
+            (0..8).for_each(|x| {
+                if pixel & (0x80 >> x) > 0 {
+                    let index = (x + vx + (y + vy) * SCREEN_WIDTH as u16)
+                        .clamp(0, SCREEN_SIZE as u16 - 1) as usize;
+                    if self.gfx_buffer[index] {
+                        self.v[0xF] = 1;
+                    }
+                    self.gfx_buffer[index] ^= true;
+                }
+            });
+        });
+
+        self.should_draw = true;
+        self.pc += 2;
+    }
+
+    fn ld_vx_i(&mut self, x: u8) {
+        (0..=x).for_each(|i| {
+            self.v[i as usize] = self.memory[self.i as usize + i as usize];
+        });
+
+        self.i += x as u16 + 1;
+        self.pc += 2;
+    }
+
     fn tick(&mut self) {
         let opcode = self.get_opcode();
+
+        // dbg!(opcode);
 
         let nib_1 = (opcode & 0xF000) >> 12;
         let nib_2 = (opcode & 0x0F00) >> 8;
         let nib_3 = (opcode & 0x00F0) >> 4;
         let nib_4 = opcode & 0x000F;
 
-        let x = ((opcode & 0x0F00) >> 8) as usize;
-        let y = ((opcode & 0x00F0) >> 4) as usize;
-        let nnn = opcode & 0x0FFF;
-        let kk = (opcode & 0x00FF) as u8;
+        let x: u8 = ((opcode & 0x0F00) >> 8) as u8;
+        let y: u8 = ((opcode & 0x00F0) >> 4) as u8;
+        let nnn: u16 = opcode & 0x0FFF;
+        let kk: u8 = (opcode & 0x00FF) as u8;
         // let n = (opcode & 0x000F) as u8;
 
         match (nib_1, nib_2, nib_3, nib_4) {
-            // 00E0 - Clear screen
-            (0, 0, 0xE, 0) => {
-                self.gfx_buffer = [false; SCREEN_SIZE];
-                self.should_draw = true;
-                self.pc += 2;
-            }
-
-            // 00EE - Return from subroutine
-            (0, 0, 0xE, 0xE) => {
-                self.sp -= 1;
-                self.pc = self.stack[self.sp as usize];
-                self.pc += 2;
-            }
-
-            // 1NNN - Jumps to address NNN
-            (0x1, _, _, _) => {
-                self.pc = nnn;
-            }
-
-            // 2NNN - Calls subroutine at NNN
-            (0x2, _, _, _) => {
-                self.stack[self.sp as usize] = self.pc;
-                self.sp += 1;
-                self.pc = nnn;
-            }
-
-            // 3XNN - Skips the next instruction if VX equals NN.
-            (0x3, _, _, _) => {
-                if self.v[x] == kk {
-                    self.pc += 4;
-                } else {
-                    self.pc += 2;
-                }
-            }
-
-            // 4XNN - Skips the next instruction if VX does not equal NN.
-            (0x4, _, _, _) => {
-                if self.v[x] != kk {
-                    self.pc += 4;
-                } else {
-                    self.pc += 2;
-                }
-            }
-
-            // 5XY0 - Skips the next instruction if VX equals VY.
-            (0x5, _, _, _) => {
-                if self.v[x] == self.v[y] {
-                    self.pc += 4;
-                } else {
-                    self.pc += 2;
-                }
-            }
+            (0, 0, 0xC, _) => unimplemented!("SCD nibble"),
+            (0, 0, 0xE, 0) => self.cls(),
+            (0, 0, 0xE, 0xE) => self.ret(),
+            (0, 0, 0xF, 0xB) => unimplemented!("SCR"),
+            (0, 0, 0xF, 0xC) => unimplemented!("SCL"),
+            (0, 0, 0xF, 0xD) => unimplemented!("EXIT"),
+            (0, 0, 0xF, 0xE) => unimplemented!("LOW"),
+            (0, 0, 0xF, 0xF) => unimplemented!("HIGH"),
+            (0x1, _, _, _) => self.jp_addr(nnn),
+            (0x2, _, _, _) => self.call_addr(nnn),
+            (0x3, _, _, _) => self.se_vx_byte(x, kk),
+            (0x4, _, _, _) => self.sne_vx_byte(x, kk),
+            (0x5, _, _, _) => self.se_vx_vy(x, y),
 
             // 6XNN - Sets VX to NN.
             (0x6, _, _, _) => {
-                self.v[x] = kk;
+                self.v[x as usize] = kk;
                 self.pc += 2;
             }
 
             // 7XNN - Adds NN to VX.
             (0x7, _, _, _) => {
-                self.v[x] += kk;
+                self.v[x as usize] += kk;
                 self.pc += 2;
             }
 
             // 8XY0 - Sets VX to the value of VY.
             (0x8, _, _, 0x0) => {
-                self.v[x] = self.v[y];
+                self.v[x as usize] = self.v[y as usize];
                 self.pc += 2;
             }
 
             // 8XY1 - Sets VX to (VX OR VY).
             (0x8, _, _, 0x1) => {
-                self.v[x] |= self.v[y];
+                self.v[x as usize] |= self.v[y as usize];
                 self.pc += 2;
             }
 
             // 8XY2 - Sets VX to (VX AND VY).
             (0x8, _, _, 0x2) => {
-                self.v[x] &= self.v[y];
+                self.v[x as usize] &= self.v[y as usize];
                 self.pc += 2;
             }
 
             // 8XY3 - Sets VX to (VX XOR VY).
             (0x8, _, _, 0x3) => {
-                self.v[x] ^= self.v[y];
+                self.v[x as usize] ^= self.v[y as usize];
                 self.pc += 2;
             }
 
             // 8XY4 - Adds VY to VX. VF is set to 1 when there's a carry, and to 0 when there isn't.
             (0x8, _, _, 0x4) => {
-                self.v[x] += self.v[y];
+                self.v[x as usize] += self.v[y as usize];
 
-                if self.v[y] > (0xFF - self.v[x]) {
+                if self.v[y as usize] > (0xFF - self.v[x as usize]) {
                     self.v[0xF] = 1;
                 } else {
                     self.v[0xF] = 0;
@@ -279,45 +334,45 @@ impl Chip8 {
 
             // 8XY5 - VY is subtracted from VX. VF is set to 0 when there's a borrow, and 1 when there isn't.
             (0x8, _, _, 0x5) => {
-                if self.v[y] > self.v[x] {
+                if self.v[y as usize] > self.v[x as usize] {
                     self.v[0xF] = 0;
                 } else {
                     self.v[0xF] = 1;
                 }
 
-                self.v[x] -= self.v[y];
+                self.v[x as usize] -= self.v[y as usize];
                 self.pc += 2;
             }
 
             // 0x8XY6 - Shifts VX right by one. VF is set to the value of the least significant bit of VX before the shift.
             (0x8, _, _, 0x6) => {
-                self.v[0xF] = self.v[x] & 0x1;
-                self.v[x] >>= 1;
+                self.v[0xF] = self.v[x as usize] & 0x1;
+                self.v[x as usize] >>= 1;
                 self.pc += 2;
             }
 
             // 0x8XY7: Sets VX to VY minus VX. VF is set to 0 when there's a borrow, and 1 when there isn't.
             (0x8, _, _, 0x7) => {
-                if self.v[x] > self.v[y] {
+                if self.v[x as usize] > self.v[y as usize] {
                     self.v[0xF] = 0;
                 } else {
                     self.v[0xF] = 1;
                 }
 
-                self.v[x] = self.v[y] - self.v[x];
+                self.v[x as usize] = self.v[y as usize] - self.v[x as usize];
                 self.pc += 2;
             }
 
             // 0x8XYE: Shifts VX left by one. VF is set to the value of the most significant bit of VX before the shift.
             (0x8, _, _, 0xE) => {
-                self.v[0xF] = self.v[x] >> 7;
-                self.v[x] <<= 1;
+                self.v[0xF] = self.v[x as usize] >> 7;
+                self.v[x as usize] <<= 1;
                 self.pc += 2;
             }
 
             // 9XY0 - Skips the next instruction if VX doesn't equal VY
             (0x9, _, _, _) => {
-                if self.v[x] != self.v[y] {
+                if self.v[x as usize] != self.v[y as usize] {
                     self.pc += 4;
                 } else {
                     self.pc += 2;
@@ -340,44 +395,21 @@ impl Chip8 {
             (0xC, _, _, _) => {
                 // TODO: Needs a random number
                 match self.rnd_seed {
-                    Some(ref mut seed) => self.v[x] = (seed.next_u32() as u8 % 0xFF + 1) & kk,
-                    None => self.v[x] = 1 & kk,
+                    Some(ref mut seed) => {
+                        self.v[x as usize] = (seed.next_u32() as u8 % 0xFF + 1) & kk;
+                    }
+                    None => self.v[x as usize] = 1 & kk,
                 }
-                // self.v[x] = (RAND % 0xFF + 1) & kk;
-                // self.v[x] = 1 & kk;
+                // self.v[x as usize] = (RAND % 0xFF + 1) & kk;
+                // self.v[x as usize] = 1 & kk;
                 self.pc += 2;
             }
 
-            // DXYN: Draws a sprite at coordinate (VX, VY) that has a width of 8 pixels and a height of N pixels.
-            (0xD, _, _, _) => {
-                let vx = self.v[x] as u16;
-                let vy = self.v[y] as u16;
-                let height = opcode & 0x000F;
-                self.v[0xF] &= 0;
-
-                // TODO: Needs refactor
-                (0..height).for_each(|y| {
-                    let pixel = self.memory[(self.i + y) as usize];
-                    (0..8).for_each(|x| {
-                        if pixel & (0x80 >> x) > 0 {
-                            let index = (x + vx + (y + vy) * SCREEN_WIDTH as u16)
-                                .clamp(0, SCREEN_SIZE as u16 - 1)
-                                as usize;
-                            if self.gfx_buffer[index] {
-                                self.v[0xF] = 1;
-                            }
-                            self.gfx_buffer[index] ^= true;
-                        }
-                    });
-                });
-
-                self.should_draw = true;
-                self.pc += 2;
-            }
+            (0xD, _, _, _) => self.drw_vx_vy_nibble(x, y, opcode),
 
             // EX9E - Skips the next instruction if the key stored in VX is pressed.
             (0xE, _, 0x9, 0xE) => {
-                if self.keys[self.v[x] as usize] {
+                if self.keys[self.v[x as usize] as usize] {
                     self.pc += 4;
                 } else {
                     self.pc += 2;
@@ -386,7 +418,7 @@ impl Chip8 {
 
             // EXA1 - Skips the next instruction if the key stored in VX isn't pressed.
             (0xE, _, 0xA, 0x1) => {
-                if !self.keys[self.v[x] as usize] {
+                if !self.keys[self.v[x as usize] as usize] {
                     self.pc += 4;
                 } else {
                     self.pc += 2;
@@ -395,7 +427,7 @@ impl Chip8 {
 
             // FX07 - Sets VX to the value of the delay timer
             (0xF, _, 0x0, 0x7) => {
-                self.v[x] = self.dt;
+                self.v[x as usize] = self.dt;
                 self.pc += 2;
             }
 
@@ -405,7 +437,7 @@ impl Chip8 {
 
                 for i in 0..KEYS {
                     if self.keys[i] {
-                        self.v[x] = 1;
+                        self.v[x as usize] = 1;
                         key_pressed = true;
                     }
                 }
@@ -419,65 +451,71 @@ impl Chip8 {
 
             // FX15 - Sets the delay timer to VX
             (0xF, _, 0x1, 0x5) => {
-                self.dt = self.v[x];
+                self.dt = self.v[x as usize];
                 self.pc += 2;
             }
 
             // FX18 - Sets the sound timer to VX
             (0xF, _, 0x1, 0x8) => {
-                self.st = self.v[x];
+                self.st = self.v[x as usize];
                 self.pc += 2;
             }
 
             // FX1E - Adds VX to I
             (0xF, _, 0x1, 0xE) => {
                 // VF is set to 1 when range overflow (I+VX>0xFFF), and 0 when there isn't.
-                if (self.i + self.v[x] as u16) > 0xFFF {
+                if (self.i + self.v[x as usize] as u16) > 0xFFF {
                     self.v[0xF] = 1;
                 } else {
                     self.v[0xF] = 0;
                 }
 
-                self.i += self.v[x] as u16;
+                self.i += self.v[x as usize] as u16;
                 self.pc += 2;
             }
 
             // FX29 - Sets I to the location of the sprite for the character in VX.
             (0xF, _, 0x2, 0x9) => {
-                self.i = self.v[x] as u16 * 0x5;
+                self.i = self.v[x as usize] as u16 * 0x5;
                 self.pc += 2;
             }
 
+            // FX30
+            (0xF, _, 0x3, 0x0) => unimplemented!("LD HF, Vx"),
+
             // FX33 - Stores the Binary-coded decimal representation of VX at the addresses I, I plus 1, and I plus 2
             (0xF, _, 0x3, 0x3) => {
-                self.memory[self.i as usize] = self.v[x] / 100;
-                self.memory[self.i as usize + 1] = (self.v[x] / 10) % 10;
-                self.memory[self.i as usize + 2] = self.v[x] % 10;
+                self.memory[self.i as usize] = self.v[x as usize] / 100;
+                self.memory[self.i as usize + 1] = (self.v[x as usize] / 10) % 10;
+                self.memory[self.i as usize + 2] = self.v[x as usize] % 10;
                 self.pc += 2;
             }
 
             // FX55 - Stores V0 to VX in memory starting at address I
             (0xF, _, 0x5, 0x5) => {
                 (0..=x).for_each(|i| {
-                    self.memory[self.i as usize + i] = self.v[i];
+                    self.memory[self.i as usize + i as usize] = self.v[i as usize];
                 });
 
                 self.i += x as u16 + 1;
                 self.pc += 2;
             }
 
-            // FX65
-            (0xF, _, 0x6, 0x5) => {
-                (0..=x).for_each(|i| {
-                    self.v[i] = self.memory[self.i as usize + i];
-                });
+            // FX75
+            (0xF, _, 0x7, 0x5) => unimplemented!("LD R, Vx"),
 
-                self.i += x as u16 + 1;
-                self.pc += 2;
-            }
+            // FX85
+            (0xF, _, 0x8, 0x5) => unimplemented!("LD Vx, R"),
 
+            (0xF, _, 0x6, 0x5) => self.ld_vx_i(x),
             (_, _, _, _) => panic!("Unknown opcode: {opcode:#04X}"),
         }
+    }
+}
+
+impl Default for Chip8 {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
