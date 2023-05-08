@@ -1,7 +1,7 @@
 {
   "cSpell.enabled": false,
   "rust-analyzer.linkedProjects": [
-    "./mchip8/Cargo.toml",
+    "./ruscii/Cargo.toml",
     "./playdate/Cargo.toml"
   ]
 }

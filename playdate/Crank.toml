@@ -1,5 +1,5 @@
 [[target]]
-    name = "chip8-playdate"
+    name = "pachip8risu"
     assets = []
 
     [target.metadata]

@@ -1,11 +1,10 @@
 [package]
-name = "yet-another-chip-8-emulator"
+name = "pachip8risu"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-mchip8 = { path = "mchip8" }
-ruscii = "0.4.0"
+rand = { version = "0.8.4", features = ["alloc", "small_rng"], default-features = false }
 
 [profile.dev]
 overflow-checks = false

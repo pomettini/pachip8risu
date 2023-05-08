@@ -1,7 +1,7 @@
-extern crate mchip8;
+extern crate pachip8risu;
 extern crate ruscii;
 
-use mchip8::Chip8;
+use pachip8risu::Chip8;
 use std::{fs::File, io::Read};
 
 use ruscii::app::{App, Config, State};
@@ -16,7 +16,7 @@ const WIDTH: i32 = 64;
 const HEIGHT: i32 = 32;
 
 fn main() {
-    let mut file = File::open("roms/test-opcode.rom").unwrap();
+    let mut file = File::open("../roms/test-opcode.rom").unwrap();
     let mut buf = Vec::new();
 
     file.read_to_end(&mut buf).unwrap();
@@ -29,8 +29,6 @@ fn main() {
             .unwrap()
             .as_secs(),
     );
-
-    // cpu.update();
 
     let mut fps_counter = FPSCounter::default();
     let mut app = App::config(Config::new().fps(60));

@@ -1,12 +1,12 @@
 #![no_std]
 
 extern crate alloc;
-extern crate mchip8;
+extern crate pachip8risu;
 
 use crankstart::geometry::ScreenRect;
 use crankstart_sys::PDButtons;
 use euclid::{Point2D, Size2D};
-use mchip8::Chip8;
+use pachip8risu::Chip8;
 
 use {
     alloc::boxed::Box,
@@ -42,7 +42,7 @@ macro_rules! BLACK {
 impl State {
     pub fn new(_playdate: &Playdate) -> Result<Box<Self>, Error> {
         let mut cpu = Chip8::new();
-        cpu.load_rom(include_bytes!("../../roms/maze.rom"), Some(10));
+        cpu.load_rom(include_bytes!("../../roms/test-opcode.rom"), Some(10));
 
         let (_, ms) = System::get().get_seconds_since_epoch().unwrap();
         cpu.set_random_seed(ms as u64);

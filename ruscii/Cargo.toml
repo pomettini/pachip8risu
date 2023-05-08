@@ -1,0 +1,11 @@
+[package]
+name = "pachip8risu-ruscii"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+pachip8risu = { path = ".." }
+ruscii = "0.4.0"
+
+[profile.dev]
+overflow-checks = false

@@ -1,0 +1,13 @@
+{
+	"folders": [
+		{
+			"path": "."
+		}
+	],
+	"settings": {
+		"rust-analyzer.linkedProjects": [
+			"./mchip8/Cargo.toml",
+			"./playdate/Cargo.toml"
+		]
+	}
+}

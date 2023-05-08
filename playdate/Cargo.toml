@@ -1,5 +1,5 @@
 [package]
-name = "chip8_playdate"
+name = "pachip8risu-playdate"
 version = "0.1.0"
 edition = "2021"
 
@@ -30,7 +30,7 @@ anyhow = { version = "1.0.31", default-features = false }
 euclid = { version = "0.20.13", default-features = false, features = [ "libm" ] }
 hashbrown = "0.7.2"
 heapless = "0.5.5"
-mchip8 = { path = "../mchip8" }
+pachip8risu = { path = ".." }
 
 [dependencies.cstr_core]
 version = "=0.1.2"
