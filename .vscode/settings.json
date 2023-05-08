@@ -1,7 +1,0 @@
-{
-  "cSpell.enabled": false,
-  "rust-analyzer.linkedProjects": [
-    "./ruscii/Cargo.toml",
-    "./playdate/Cargo.toml"
-  ]
-}
