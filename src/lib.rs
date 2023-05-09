@@ -6,6 +6,9 @@ use rand::rngs::SmallRng;
 use rand::RngCore;
 use rand::SeedableRng;
 
+#[cfg(test)]
+mod tests;
+
 const REGISTERS: usize = 16;
 const STACK_SIZE: usize = 16;
 const KEYS: usize = 16;
@@ -106,12 +109,14 @@ impl Chip8 {
         self.memory = [0; RAM_SIZE];
     }
 
-    pub fn load_rom(&mut self, buf: &[u8], tick_rate: Option<u16>) {
-        self.memory[ENTRY_POINT..(buf.len() + ENTRY_POINT)].copy_from_slice(buf);
+    pub fn load_rom(&mut self, rom_buf: &[u8], tick_rate: Option<u16>) {
+        // Load rom at address 0x200
+        self.memory[ENTRY_POINT..(rom_buf.len() + ENTRY_POINT)].copy_from_slice(rom_buf);
 
         // Load font at address 0x000
         self.memory[0..FONT.len()].copy_from_slice(&FONT);
 
+        // Set tick rate
         if let Some(x) = tick_rate {
             self.tick_rate = x;
         }
@@ -133,7 +138,7 @@ impl Chip8 {
         });
     }
 
-    pub fn update_timers(&mut self) {
+    fn update_timers(&mut self) {
         if self.dt > 0 {
             self.dt -= 1;
         }
@@ -363,6 +368,56 @@ impl Chip8 {
         self.pc += 2;
     }
 
+    fn skp_vx(&mut self, x: u8) {
+        // EX9E - Skips the next instruction if the key stored in VX is pressed.
+        if self.keys[self.v[x as usize] as usize] {
+            self.pc += 4;
+        } else {
+            self.pc += 2;
+        }
+    }
+
+    fn sknp_vx(&mut self, x: u8) {
+        // EXA1 - Skips the next instruction if the key stored in VX isn't pressed.
+        if !self.keys[self.v[x as usize] as usize] {
+            self.pc += 4;
+        } else {
+            self.pc += 2;
+        }
+    }
+
+    fn ld_vx_dt(&mut self, x: u8) {
+        // FX07 - Sets VX to the value of the delay timer
+        self.v[x as usize] = self.dt;
+        self.pc += 2;
+    }
+
+    fn ld_vx_k(&mut self, x: u8) {
+        // FX0A - A key press is awaited, and then stored in VX
+        let mut key_pressed = false;
+
+        for i in 0..KEYS {
+            if self.keys[i] {
+                self.v[x as usize] = 1;
+                key_pressed = true;
+            }
+        }
+
+        if !key_pressed {
+            return;
+        }
+
+        self.pc += 2;
+    }
+
+    fn ld_dt_vx(&mut self, x: u8) {
+        // FX15 - Sets the delay timer to VX
+        self.dt = self.v[x as usize];
+        self.pc += 2;
+    }
+
+    // ---
+
     fn ld_vx_i(&mut self, x: u8) {
         (0..=x).for_each(|i| {
             self.v[i as usize] = self.memory[self.i as usize + i as usize];
@@ -418,54 +473,11 @@ impl Chip8 {
             (0xB, _, _, _) => self.jp_v0_addr(nnn),
             (0xC, _, _, _) => self.rnd_vx_byte(x, kk),
             (0xD, _, _, _) => self.drw_vx_vy_nibble(x, y, opcode),
-
-            // EX9E - Skips the next instruction if the key stored in VX is pressed.
-            (0xE, _, 0x9, 0xE) => {
-                if self.keys[self.v[x as usize] as usize] {
-                    self.pc += 4;
-                } else {
-                    self.pc += 2;
-                }
-            }
-
-            // EXA1 - Skips the next instruction if the key stored in VX isn't pressed.
-            (0xE, _, 0xA, 0x1) => {
-                if !self.keys[self.v[x as usize] as usize] {
-                    self.pc += 4;
-                } else {
-                    self.pc += 2;
-                }
-            }
-
-            // FX07 - Sets VX to the value of the delay timer
-            (0xF, _, 0x0, 0x7) => {
-                self.v[x as usize] = self.dt;
-                self.pc += 2;
-            }
-
-            // FX0A - A key press is awaited, and then stored in VX
-            (0xF, _, 0x0, 0xA) => {
-                let mut key_pressed = false;
-
-                for i in 0..KEYS {
-                    if self.keys[i] {
-                        self.v[x as usize] = 1;
-                        key_pressed = true;
-                    }
-                }
-
-                if !key_pressed {
-                    return;
-                }
-
-                self.pc += 2;
-            }
-
-            // FX15 - Sets the delay timer to VX
-            (0xF, _, 0x1, 0x5) => {
-                self.dt = self.v[x as usize];
-                self.pc += 2;
-            }
+            (0xE, _, 0x9, 0xE) => self.skp_vx(x),
+            (0xE, _, 0xA, 0x1) => self.sknp_vx(x),
+            (0xF, _, 0x0, 0x7) => self.ld_vx_dt(x),
+            (0xF, _, 0x0, 0xA) => self.ld_vx_k(x),
+            (0xF, _, 0x1, 0x5) => self.ld_dt_vx(x),
 
             // FX18 - Sets the sound timer to VX
             (0xF, _, 0x1, 0x8) => {
@@ -525,318 +537,4 @@ impl Default for Chip8 {
     fn default() -> Self {
         Self::new()
     }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    macro_rules! test_opcode {
-        ($cpu:expr,$opcode:expr,$entry_point:expr) => {{
-            $cpu.memory[$entry_point] = (($opcode & 0xFF00) >> 8) as u8;
-            $cpu.memory[$entry_point + 1] = ($opcode & 0x00FF) as u8;
-            $cpu.tick();
-        }};
-    }
-
-    /*
-    #[test]
-    fn test_sys_addr() {}
-    */
-
-    #[test]
-    fn test_cls() {
-        let mut cpu = Chip8::new();
-
-        cpu.gfx_buffer = [true; SCREEN_WIDTH * SCREEN_HEIGHT];
-
-        // CLS
-        test_opcode!(cpu, 0x00E0, ENTRY_POINT);
-
-        assert_eq!(cpu.pc, (ENTRY_POINT + 2) as u16);
-        assert_eq!(cpu.gfx_buffer, [false; SCREEN_WIDTH * SCREEN_HEIGHT]);
-    }
-
-    #[test]
-    fn test_ret() {
-        let mut cpu = Chip8::new();
-
-        // JMP 0x0ABC
-        test_opcode!(cpu, 0x2ABC, ENTRY_POINT);
-
-        // RET
-        test_opcode!(cpu, 0x00EE, 0x0ABC);
-
-        assert_eq!(cpu.pc, (ENTRY_POINT + 2) as u16);
-        assert_eq!(cpu.sp, 0);
-    }
-
-    #[test]
-    fn test_jp_addr() {
-        let mut cpu = Chip8::new();
-
-        // JMP 0x0A2A
-        test_opcode!(cpu, 0x1A2A, ENTRY_POINT);
-
-        assert_eq!(cpu.pc, 0x0A2A);
-    }
-
-    #[test]
-    fn test_call_addr() {
-        let mut cpu = Chip8::new();
-
-        test_opcode!(cpu, 0x2ABC, ENTRY_POINT);
-
-        assert_eq!(cpu.pc, 0x0ABC);
-        assert_eq!(cpu.sp, 1);
-        assert_eq!(cpu.stack[0], ENTRY_POINT as u16);
-    }
-
-    #[test]
-    fn test_se_vx_byte() {
-        let mut cpu = Chip8::new();
-
-        test_opcode!(cpu, 0x3000, ENTRY_POINT);
-
-        assert_eq!(cpu.pc, ENTRY_POINT as u16);
-    }
-
-    #[test]
-    fn test_sne_vx_byte() {
-        let mut cpu = Chip8::new();
-
-        test_opcode!(cpu, 0x4000, ENTRY_POINT);
-
-        assert_eq!(cpu.pc, ENTRY_POINT as u16);
-    }
-
-    #[test]
-    fn test_se_vx_vy() {
-        let mut cpu = Chip8::new();
-
-        test_opcode!(cpu, 0x5000, ENTRY_POINT);
-
-        assert_eq!(cpu.pc, ENTRY_POINT as u16);
-    }
-
-    #[test]
-    fn test_ld_vx_byte() {
-        let mut cpu = Chip8::new();
-
-        test_opcode!(cpu, 0x6000, ENTRY_POINT);
-
-        assert_eq!(cpu.pc, ENTRY_POINT as u16);
-    }
-
-    #[test]
-    fn test_add_vx_byte() {
-        let mut cpu = Chip8::new();
-
-        test_opcode!(cpu, 0x7000, ENTRY_POINT);
-
-        assert_eq!(cpu.pc, ENTRY_POINT as u16);
-    }
-
-    #[test]
-    fn test_ld_vx_vy() {
-        let mut cpu = Chip8::new();
-
-        test_opcode!(cpu, 0x8000, ENTRY_POINT);
-
-        assert_eq!(cpu.pc, ENTRY_POINT as u16);
-    }
-
-    /*
-    #[test]
-    fn test_or_vx_vy() {
-        let mut cpu = Chip8::new();
-        cpu.tick();
-
-        assert_eq!(cpu.pc, 100);
-    }
-
-    #[test]
-    fn test_and_vx_vy() {
-        let mut cpu = Chip8::new();
-        cpu.tick();
-
-        assert_eq!(cpu.pc, 100);
-    }
-
-    #[test]
-    fn test_xor_vx_vy() {
-        let mut cpu = Chip8::new();
-        cpu.tick();
-
-        assert_eq!(cpu.pc, 100);
-    }
-
-    #[test]
-    fn test_add_vx_vy() {
-        let mut cpu = Chip8::new();
-        cpu.tick();
-
-        assert_eq!(cpu.pc, 100);
-    }
-
-    #[test]
-    fn test_sub_vx_vy() {
-        let mut cpu = Chip8::new();
-        cpu.tick();
-
-        assert_eq!(cpu.pc, 100);
-    }
-
-    #[test]
-    fn test_shr_vx_vy() {
-        let mut cpu = Chip8::new();
-        cpu.tick();
-
-        assert_eq!(cpu.pc, 100);
-    }
-
-    #[test]
-    fn test_subn_vx_vy() {
-        let mut cpu = Chip8::new();
-        cpu.tick();
-
-        assert_eq!(cpu.pc, 100);
-    }
-
-    #[test]
-    fn test_shl_vx_vy() {
-        let mut cpu = Chip8::new();
-        cpu.tick();
-
-        assert_eq!(cpu.pc, 100);
-    }
-
-    #[test]
-    fn test_sne_vx_vy() {
-        let mut cpu = Chip8::new();
-        cpu.tick();
-
-        assert_eq!(cpu.pc, 100);
-    }
-
-    #[test]
-    fn test_ld_i_addr() {
-        let mut cpu = Chip8::new();
-        cpu.tick();
-
-        assert_eq!(cpu.pc, 100);
-    }
-
-    #[test]
-    fn test_jp_v0_addr() {
-        let mut cpu = Chip8::new();
-        cpu.tick();
-
-        assert_eq!(cpu.pc, 100);
-    }
-
-    #[test]
-    fn test_rnd_vx_byte() {
-        let mut cpu = Chip8::new();
-        cpu.tick();
-
-        assert_eq!(cpu.pc, 100);
-    }
-
-    #[test]
-    fn test_drw_vx_vy_nibble() {
-        let mut cpu = Chip8::new();
-        cpu.tick();
-
-        assert_eq!(cpu.pc, 100);
-    }
-
-    #[test]
-    fn test_skp_vx() {
-        let mut cpu = Chip8::new();
-        cpu.tick();
-
-        assert_eq!(cpu.pc, 100);
-    }
-
-    #[test]
-    fn test_sknp_vx() {
-        let mut cpu = Chip8::new();
-        cpu.tick();
-
-        assert_eq!(cpu.pc, 100);
-    }
-
-    #[test]
-    fn test_ld_vx_dt() {
-        let mut cpu = Chip8::new();
-        cpu.tick();
-
-        assert_eq!(cpu.pc, 100);
-    }
-
-    #[test]
-    fn test_ld_vx_k() {
-        let mut cpu = Chip8::new();
-        cpu.tick();
-
-        assert_eq!(cpu.pc, 100);
-    }
-
-    #[test]
-    fn test_ld_dt_vx() {
-        let mut cpu = Chip8::new();
-        cpu.tick();
-
-        assert_eq!(cpu.pc, 100);
-    }
-
-    #[test]
-    fn test_ld_st_vx() {
-        let mut cpu = Chip8::new();
-        cpu.tick();
-
-        assert_eq!(cpu.pc, 100);
-    }
-
-    #[test]
-    fn test_add_i_vx() {
-        let mut cpu = Chip8::new();
-        cpu.tick();
-
-        assert_eq!(cpu.pc, 100);
-    }
-
-    #[test]
-    fn test_ld_f_vx() {
-        let mut cpu = Chip8::new();
-        cpu.tick();
-
-        assert_eq!(cpu.pc, 100);
-    }
-
-    #[test]
-    fn test_ld_b_vx() {
-        let mut cpu = Chip8::new();
-        cpu.tick();
-
-        assert_eq!(cpu.pc, 100);
-    }
-
-    #[test]
-    fn test_ld_i_vx() {
-        let mut cpu = Chip8::new();
-        cpu.tick();
-
-        assert_eq!(cpu.pc, 100);
-    }
-
-    #[test]
-    fn test_ld_vx_i() {
-        let mut cpu = Chip8::new();
-        cpu.tick();
-
-        assert_eq!(cpu.pc, 100);
-    }
-    */
 }
