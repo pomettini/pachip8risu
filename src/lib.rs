@@ -416,7 +416,48 @@ impl Chip8 {
         self.pc += 2;
     }
 
-    // ---
+    fn ld_st_vx(&mut self, x: u8) {
+        // FX18 - Sets the sound timer to VX
+        self.st = self.v[x as usize];
+        self.pc += 2;
+    }
+
+    fn add_i_vx(&mut self, x: u8) {
+        // FX1E - Adds VX to I
+        // VF is set to 1 when range overflow (I+VX>0xFFF), and 0 when there isn't.
+        if (self.i + self.v[x as usize] as u16) > 0xFFF {
+            self.v[0xF] = 1;
+        } else {
+            self.v[0xF] = 0;
+        }
+
+        self.i += self.v[x as usize] as u16;
+        self.pc += 2;
+    }
+
+    fn ld_f_vx(&mut self, x: u8) {
+        // FX29 - Sets I to the location of the sprite for the character in VX.
+        self.i = self.v[x as usize] as u16 * 0x5;
+        self.pc += 2;
+    }
+
+    fn ld_b_vx(&mut self, x: u8) {
+        // FX33 - Stores the Binary-coded decimal representation of VX at the addresses I, I plus 1, and I plus 2
+        self.memory[self.i as usize] = self.v[x as usize] / 100;
+        self.memory[self.i as usize + 1] = (self.v[x as usize] / 10) % 10;
+        self.memory[self.i as usize + 2] = self.v[x as usize] % 10;
+        self.pc += 2;
+    }
+
+    fn ld_i_vx(&mut self, x: u8) {
+        // FX55 - Stores V0 to VX in memory starting at address I
+        (0..=x).for_each(|i| {
+            self.memory[self.i as usize + i as usize] = self.v[i as usize];
+        });
+
+        self.i += x as u16 + 1;
+        self.pc += 2;
+    }
 
     fn ld_vx_i(&mut self, x: u8) {
         (0..=x).for_each(|i| {
@@ -478,53 +519,12 @@ impl Chip8 {
             (0xF, _, 0x0, 0x7) => self.ld_vx_dt(x),
             (0xF, _, 0x0, 0xA) => self.ld_vx_k(x),
             (0xF, _, 0x1, 0x5) => self.ld_dt_vx(x),
-
-            // FX18 - Sets the sound timer to VX
-            (0xF, _, 0x1, 0x8) => {
-                self.st = self.v[x as usize];
-                self.pc += 2;
-            }
-
-            // FX1E - Adds VX to I
-            (0xF, _, 0x1, 0xE) => {
-                // VF is set to 1 when range overflow (I+VX>0xFFF), and 0 when there isn't.
-                if (self.i + self.v[x as usize] as u16) > 0xFFF {
-                    self.v[0xF] = 1;
-                } else {
-                    self.v[0xF] = 0;
-                }
-
-                self.i += self.v[x as usize] as u16;
-                self.pc += 2;
-            }
-
-            // FX29 - Sets I to the location of the sprite for the character in VX.
-            (0xF, _, 0x2, 0x9) => {
-                self.i = self.v[x as usize] as u16 * 0x5;
-                self.pc += 2;
-            }
-
-            // FX30
+            (0xF, _, 0x1, 0x8) => self.ld_st_vx(x),
+            (0xF, _, 0x1, 0xE) => self.add_i_vx(x),
+            (0xF, _, 0x2, 0x9) => self.ld_f_vx(x),
             (0xF, _, 0x3, 0x0) => unimplemented!("LD HF, Vx"),
-
-            // FX33 - Stores the Binary-coded decimal representation of VX at the addresses I, I plus 1, and I plus 2
-            (0xF, _, 0x3, 0x3) => {
-                self.memory[self.i as usize] = self.v[x as usize] / 100;
-                self.memory[self.i as usize + 1] = (self.v[x as usize] / 10) % 10;
-                self.memory[self.i as usize + 2] = self.v[x as usize] % 10;
-                self.pc += 2;
-            }
-
-            // FX55 - Stores V0 to VX in memory starting at address I
-            (0xF, _, 0x5, 0x5) => {
-                (0..=x).for_each(|i| {
-                    self.memory[self.i as usize + i as usize] = self.v[i as usize];
-                });
-
-                self.i += x as u16 + 1;
-                self.pc += 2;
-            }
-
+            (0xF, _, 0x3, 0x3) => self.ld_b_vx(x),
+            (0xF, _, 0x5, 0x5) => self.ld_i_vx(x),
             (0xF, _, 0x7, 0x5) => unimplemented!("LD R, Vx"), // FX75
             (0xF, _, 0x8, 0x5) => unimplemented!("LD Vx, R"), // FX85
             (0xF, _, 0x6, 0x5) => self.ld_vx_i(x),
