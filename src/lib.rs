@@ -40,7 +40,7 @@ const FONT: [u8; 80] = [
 ];
 
 // Super-Chip and variants
-const BIG_FONT: [u8; 160] = [
+const _BIG_FONT: [u8; 160] = [
     0xFF, 0xFF, 0xC3, 0xC3, 0xC3, 0xC3, 0xC3, 0xC3, 0xFF, 0xFF, // 0
     0x18, 0x78, 0x78, 0x18, 0x18, 0x18, 0x18, 0x18, 0xFF, 0xFF, // 1
     0xFF, 0xFF, 0x03, 0x03, 0xFF, 0xFF, 0xC0, 0xC0, 0xFF, 0xFF, // 2
@@ -78,7 +78,7 @@ pub struct Chip8 {
     rnd_seed: Option<SmallRng>,
     tick_rate: u16,
     should_draw: bool,
-    hi_res: bool,
+    _hi_res: bool,
 }
 
 impl Chip8 {
@@ -98,7 +98,7 @@ impl Chip8 {
             rnd_seed: None,
             tick_rate: DEFAULT_TICK_RATE,
             should_draw: false,
-            hi_res: false,
+            _hi_res: false,
         }
     }
 
@@ -129,6 +129,23 @@ impl Chip8 {
 
     const fn get_opcode(&self) -> u16 {
         (self.memory[self.pc as usize] as u16) << 8 | (self.memory[self.pc as usize + 1] as u16)
+    }
+
+    const fn get_nibbles(&self, opcode: u16) -> (u16, u16, u16, u16) {
+        let nib_1 = (opcode & 0xF000) >> 12;
+        let nib_2 = (opcode & 0x0F00) >> 8;
+        let nib_3 = (opcode & 0x00F0) >> 4;
+        let nib_4 = opcode & 0x000F;
+        (nib_1, nib_2, nib_3, nib_4)
+    }
+
+    const fn get_variables(&self, opcode: u16) -> (u8, u8, u16, u8, u8) {
+        let x: u8 = ((opcode & 0x0F00) >> 8) as u8;
+        let y: u8 = ((opcode & 0x00F0) >> 4) as u8;
+        let nnn: u16 = opcode & 0x0FFF;
+        let kk: u8 = (opcode & 0x00FF) as u8;
+        let n = (opcode & 0x000F) as u8;
+        (x, y, nnn, kk, n)
     }
 
     pub fn update(&mut self) {
@@ -169,34 +186,34 @@ impl Chip8 {
 
     // Start opcodes
 
+    /// Clear screen
     fn cls(&mut self) {
-        // 00E0 - Clear screen
         self.gfx_buffer = [false; SCREEN_SIZE];
         self.should_draw = true;
         self.pc += 2;
     }
 
+    /// Return from subroutine
     fn ret(&mut self) {
-        // 00EE - Return from subroutine
         self.sp -= 1;
         self.pc = self.stack[self.sp as usize];
         self.pc += 2;
     }
 
+    /// Jumps to address NNN
     fn jp_addr(&mut self, nnn: u16) {
-        // 1NNN - Jumps to address NNN
         self.pc = nnn;
     }
 
+    /// Calls subroutine at NNN
     fn call_addr(&mut self, nnn: u16) {
-        // 2NNN - Calls subroutine at NNN
         self.stack[self.sp as usize] = self.pc;
         self.sp += 1;
         self.pc = nnn;
     }
 
+    /// Skips the next instruction if VX equals NN.
     fn se_vx_byte(&mut self, x: u8, kk: u8) {
-        // 3XNN - Skips the next instruction if VX equals NN.
         if self.v[x as usize] == kk {
             self.pc += 4;
         } else {
@@ -204,8 +221,8 @@ impl Chip8 {
         }
     }
 
+    /// Skips the next instruction if VX does not equal NN.
     fn sne_vx_byte(&mut self, x: u8, kk: u8) {
-        // 4XNN - Skips the next instruction if VX does not equal NN.
         if self.v[x as usize] != kk {
             self.pc += 4;
         } else {
@@ -213,8 +230,8 @@ impl Chip8 {
         }
     }
 
+    /// Skips the next instruction if VX equals VY.
     fn se_vx_vy(&mut self, x: u8, y: u8) {
-        // 5XY0 - Skips the next instruction if VX equals VY.
         if self.v[x as usize] == self.v[y as usize] {
             self.pc += 4;
         } else {
@@ -222,44 +239,44 @@ impl Chip8 {
         }
     }
 
+    /// Sets VX to NN.
     fn ld_vx_byte(&mut self, x: u8, kk: u8) {
-        // 6XNN - Sets VX to NN.
         self.v[x as usize] = kk;
         self.pc += 2;
     }
 
+    /// Adds NN to VX.
     fn add_vx_byte(&mut self, x: u8, kk: u8) {
-        // 7XNN - Adds NN to VX.
         self.v[x as usize] += kk;
         self.pc += 2;
     }
 
+    /// Sets VX to the value of VY.
     fn ld_vx_vy(&mut self, x: u8, y: u8) {
-        // 8XY0 - Sets VX to the value of VY.
         self.v[x as usize] = self.v[y as usize];
         self.pc += 2;
     }
 
+    /// Sets VX to (VX OR VY).
     fn or_vx_vy(&mut self, x: u8, y: u8) {
-        // 8XY1 - Sets VX to (VX OR VY).
         self.v[x as usize] |= self.v[y as usize];
         self.pc += 2;
     }
 
+    /// Sets VX to (VX AND VY).
     fn and_vx_vy(&mut self, x: u8, y: u8) {
-        // 8XY2 - Sets VX to (VX AND VY).
         self.v[x as usize] &= self.v[y as usize];
         self.pc += 2;
     }
 
+    /// Sets VX to (VX XOR VY).
     fn xor_vx_vy(&mut self, x: u8, y: u8) {
-        // 8XY3 - Sets VX to (VX XOR VY).
         self.v[x as usize] ^= self.v[y as usize];
         self.pc += 2;
     }
 
+    ///Adds VY to VX. VF is set to 1 when there's a carry, and to 0 when there isn't.
     fn add_vx_vy(&mut self, x: u8, y: u8) {
-        // 8XY4 - Adds VY to VX. VF is set to 1 when there's a carry, and to 0 when there isn't.
         self.v[x as usize] += self.v[y as usize];
 
         if self.v[y as usize] > (0xFF - self.v[x as usize]) {
@@ -283,15 +300,15 @@ impl Chip8 {
         self.pc += 2;
     }
 
+    /// Shifts VX right by one. VF is set to the value of the least significant bit of VX before the shift.
     fn shr_vx_vy(&mut self, x: u8) {
-        // 0x8XY6 - Shifts VX right by one. VF is set to the value of the least significant bit of VX before the shift.
         self.v[0xF] = self.v[x as usize] & 0x1;
         self.v[x as usize] >>= 1;
         self.pc += 2;
     }
 
+    /// Sets VX to VY minus VX. VF is set to 0 when there's a borrow, and 1 when there isn't.
     fn subn_vx_vy(&mut self, x: u8, y: u8) {
-        // 0x8XY7: Sets VX to VY minus VX. VF is set to 0 when there's a borrow, and 1 when there isn't.
         if self.v[x as usize] > self.v[y as usize] {
             self.v[0xF] = 0;
         } else {
@@ -302,15 +319,15 @@ impl Chip8 {
         self.pc += 2;
     }
 
+    /// Shifts VX left by one. VF is set to the value of the most significant bit of VX before the shift.
     fn shl_vx_vy(&mut self, x: u8) {
-        // 0x8XYE: Shifts VX left by one. VF is set to the value of the most significant bit of VX before the shift.
         self.v[0xF] = self.v[x as usize] >> 7;
         self.v[x as usize] <<= 1;
         self.pc += 2;
     }
 
+    /// Skips the next instruction if VX doesn't equal VY
     fn sne_vx_vy(&mut self, x: u8, y: u8) {
-        // 9XY0 - Skips the next instruction if VX doesn't equal VY
         if self.v[x as usize] != self.v[y as usize] {
             self.pc += 4;
         } else {
@@ -318,20 +335,20 @@ impl Chip8 {
         }
     }
 
+    /// Sets I to the address NNN.
     fn ld_i_addr(&mut self, nnn: u16) {
-        // ANNN - Sets I to the address NNN.
         self.i = nnn;
         self.pc += 2;
     }
 
+    /// Jumps to the address NNN plus V0.
     fn jp_v0_addr(&mut self, nnn: u16) {
-        // BNNN - Jumps to the address NNN plus V0.
         self.pc = nnn + self.v[0] as u16;
         self.pc += 2;
     }
 
+    /// Sets VX to a random number, masked by NN.
     fn rnd_vx_byte(&mut self, x: u8, kk: u8) {
-        // CXNN - Sets VX to a random number, masked by NN.
         match self.rnd_seed {
             Some(ref mut seed) => {
                 self.v[x as usize] = (seed.next_u32() as u8 % 0xFF + 1) & kk;
@@ -342,8 +359,8 @@ impl Chip8 {
         self.pc += 2;
     }
 
+    /// Draws a sprite at coordinate (VX, VY) that has a width of 8 pixels and a height of N pixels.
     fn drw_vx_vy_nibble(&mut self, x: u8, y: u8, opcode: u16) {
-        // DXYN: Draws a sprite at coordinate (VX, VY) that has a width of 8 pixels and a height of N pixels.
         let vx = self.v[x as usize] as u16;
         let vy = self.v[y as usize] as u16;
         let height = opcode & 0x000F;
@@ -368,8 +385,8 @@ impl Chip8 {
         self.pc += 2;
     }
 
+    /// Skips the next instruction if the key stored in VX is pressed.
     fn skp_vx(&mut self, x: u8) {
-        // EX9E - Skips the next instruction if the key stored in VX is pressed.
         if self.keys[self.v[x as usize] as usize] {
             self.pc += 4;
         } else {
@@ -377,8 +394,8 @@ impl Chip8 {
         }
     }
 
+    /// Skips the next instruction if the key stored in VX isn't pressed.
     fn sknp_vx(&mut self, x: u8) {
-        // EXA1 - Skips the next instruction if the key stored in VX isn't pressed.
         if !self.keys[self.v[x as usize] as usize] {
             self.pc += 4;
         } else {
@@ -386,14 +403,15 @@ impl Chip8 {
         }
     }
 
+    /// Sets VX to the value of the delay timer
     fn ld_vx_dt(&mut self, x: u8) {
-        // FX07 - Sets VX to the value of the delay timer
         self.v[x as usize] = self.dt;
         self.pc += 2;
     }
 
+    /// A key press is awaited, and then stored in VX
     fn ld_vx_k(&mut self, x: u8) {
-        // FX0A - A key press is awaited, and then stored in VX
+        // TODO: Might need refactor
         let mut key_pressed = false;
 
         for i in 0..KEYS {
@@ -410,20 +428,20 @@ impl Chip8 {
         self.pc += 2;
     }
 
+    /// Sets the delay timer to VX
     fn ld_dt_vx(&mut self, x: u8) {
-        // FX15 - Sets the delay timer to VX
         self.dt = self.v[x as usize];
         self.pc += 2;
     }
 
+    /// Sets the sound timer to VX
     fn ld_st_vx(&mut self, x: u8) {
-        // FX18 - Sets the sound timer to VX
         self.st = self.v[x as usize];
         self.pc += 2;
     }
 
+    /// Adds VX to I
     fn add_i_vx(&mut self, x: u8) {
-        // FX1E - Adds VX to I
         // VF is set to 1 when range overflow (I+VX>0xFFF), and 0 when there isn't.
         if (self.i + self.v[x as usize] as u16) > 0xFFF {
             self.v[0xF] = 1;
@@ -435,22 +453,22 @@ impl Chip8 {
         self.pc += 2;
     }
 
+    /// Sets I to the location of the sprite for the character in VX.
     fn ld_f_vx(&mut self, x: u8) {
-        // FX29 - Sets I to the location of the sprite for the character in VX.
         self.i = self.v[x as usize] as u16 * 0x5;
         self.pc += 2;
     }
 
+    /// Stores the Binary-coded decimal representation of VX at the addresses I, I plus 1, and I plus 2
     fn ld_b_vx(&mut self, x: u8) {
-        // FX33 - Stores the Binary-coded decimal representation of VX at the addresses I, I plus 1, and I plus 2
         self.memory[self.i as usize] = self.v[x as usize] / 100;
         self.memory[self.i as usize + 1] = (self.v[x as usize] / 10) % 10;
         self.memory[self.i as usize + 2] = self.v[x as usize] % 10;
         self.pc += 2;
     }
 
+    /// Stores V0 to VX in memory starting at address I
     fn ld_i_vx(&mut self, x: u8) {
-        // FX55 - Stores V0 to VX in memory starting at address I
         (0..=x).for_each(|i| {
             self.memory[self.i as usize + i as usize] = self.v[i as usize];
         });
@@ -472,19 +490,10 @@ impl Chip8 {
 
     fn tick(&mut self) {
         let opcode = self.get_opcode();
+        let nibbles = self.get_nibbles(opcode);
+        let (x, y, nnn, kk, _n) = self.get_variables(opcode);
 
-        let nib_1 = (opcode & 0xF000) >> 12;
-        let nib_2 = (opcode & 0x0F00) >> 8;
-        let nib_3 = (opcode & 0x00F0) >> 4;
-        let nib_4 = opcode & 0x000F;
-
-        let x: u8 = ((opcode & 0x0F00) >> 8) as u8;
-        let y: u8 = ((opcode & 0x00F0) >> 4) as u8;
-        let nnn: u16 = opcode & 0x0FFF;
-        let kk: u8 = (opcode & 0x00FF) as u8;
-        // let n = (opcode & 0x000F) as u8;
-
-        match (nib_1, nib_2, nib_3, nib_4) {
+        match nibbles {
             (0, 0, 0xC, _) => unimplemented!("SCD nibble"),
             (0, 0, 0xE, 0) => self.cls(),
             (0, 0, 0xE, 0xE) => self.ret(),
