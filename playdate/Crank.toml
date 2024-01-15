@@ -1,12 +1,11 @@
 [[target]]
-    name = "pachip8risu"
-    assets = []
+name = "pachip8risu"
+assets = []
 
-    [target.metadata]
-        name = "Chip8 Playdate"
-        author = "Giorgio Pomettini"
-        description = ""
-        bundle_id = "com.pomettini.chip8pd"
-        version = "0.1"
-        image_path = "assets/launcher"
-        
+[target.metadata]
+name = "Chip8 Playdate"
+author = "Giorgio Pomettini"
+description = ""
+bundle_id = "com.pomettini.chip8pd"
+version = "0.1"
+image_path = "assets/launcher"
