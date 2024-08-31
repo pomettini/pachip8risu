@@ -45,7 +45,7 @@ macro_rules! BLACK {
 impl State {
     pub fn new(_playdate: &Playdate) -> Result<Box<Self>, Error> {
         let mut cpu = Chip8::new();
-        cpu.load_rom(include_bytes!("../../roms/flags.rom"), Some(10));
+        cpu.load_rom(include_bytes!("../../roms/scrolling.rom"), Some(10));
 
         let (_, ms) = System::get().get_seconds_since_epoch().unwrap();
         cpu.set_random_seed(ms as u64);
@@ -65,19 +65,25 @@ impl Game for State {
             }
         }
 
+        // log_to_console!("{0:#04X}", self.cpu.get_opcode());
+
         let (_, pressed, released) = System::get().get_button_state().unwrap();
 
         match pressed {
-            PDButtons::kButtonLeft => self.cpu.keys[4] = true,
-            PDButtons::kButtonA => self.cpu.keys[5] = true,
-            PDButtons::kButtonRight => self.cpu.keys[6] = true,
+            PDButtons::kButtonA => {
+                for i in 0..16 {
+                    self.cpu.keys[i] = true;
+                }
+            }
             _ => (),
         }
 
         match released {
-            PDButtons::kButtonLeft => self.cpu.keys[4] = false,
-            PDButtons::kButtonA => self.cpu.keys[5] = false,
-            PDButtons::kButtonRight => self.cpu.keys[6] = false,
+            PDButtons::kButtonA => {
+                for i in 0..16 {
+                    self.cpu.keys[i] = false;
+                }
+            }
             _ => (),
         }
 

@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 rand = { version = "0.8.4", features = ["alloc", "small_rng"], default-features = false }
+anyhow = { version = "1.0.31", default-features = false }
 
 [profile.dev]
 overflow-checks = false

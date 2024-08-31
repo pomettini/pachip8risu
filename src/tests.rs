@@ -12,13 +12,16 @@ macro_rules! test_opcode {
 fn test_cls() {
     let mut cpu = Chip8::new();
 
-    cpu.gfx_buffer = [true; SCREEN_WIDTH * SCREEN_HEIGHT];
+    cpu.gfx_buffer = [true; (SCREEN_WIDTH * 2) * (SCREEN_HEIGHT * 2)];
 
     // CLS
     test_opcode!(cpu, 0x00E0, ENTRY_POINT);
 
     assert_eq!(cpu.pc, (ENTRY_POINT + 2) as u16);
-    assert_eq!(cpu.gfx_buffer, [false; SCREEN_WIDTH * SCREEN_HEIGHT]);
+    assert_eq!(
+        cpu.gfx_buffer,
+        [false; (SCREEN_WIDTH * 2) * (SCREEN_HEIGHT * 2)]
+    );
 }
 
 #[test]

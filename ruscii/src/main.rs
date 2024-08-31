@@ -16,7 +16,7 @@ const WIDTH: i32 = 64;
 const HEIGHT: i32 = 32;
 
 fn main() {
-    let mut file = File::open("../roms/test-opcode.rom").unwrap();
+    let mut file = File::open("../roms/maze2.rom").unwrap();
     let mut buf = Vec::new();
 
     file.read_to_end(&mut buf).unwrap();

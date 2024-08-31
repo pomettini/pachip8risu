@@ -2,6 +2,7 @@
 
 extern crate rand;
 
+use anyhow::Error;
 use rand::rngs::SmallRng;
 use rand::RngCore;
 use rand::SeedableRng;
@@ -15,7 +16,7 @@ const KEYS: usize = 16;
 const RAM_SIZE: usize = 4096;
 const SCREEN_WIDTH: usize = 64;
 const SCREEN_HEIGHT: usize = 32;
-const SCREEN_SIZE: usize = SCREEN_WIDTH * SCREEN_HEIGHT;
+const SCREEN_SIZE: usize = (SCREEN_WIDTH * 2) * (SCREEN_HEIGHT * 2);
 const ENTRY_POINT: usize = 512;
 const DEFAULT_TICK_RATE: u16 = 10;
 
@@ -78,7 +79,7 @@ pub struct Chip8 {
     rnd_seed: Option<SmallRng>,
     tick_rate: u16,
     should_draw: bool,
-    _hi_res: bool,
+    hi_res: bool,
 }
 
 impl Chip8 {
@@ -98,7 +99,7 @@ impl Chip8 {
             rnd_seed: None,
             tick_rate: DEFAULT_TICK_RATE,
             should_draw: false,
-            _hi_res: false,
+            hi_res: false,
         }
     }
 
@@ -127,7 +128,7 @@ impl Chip8 {
         self.rnd_seed = Some(small_rng);
     }
 
-    const fn get_opcode(&self) -> u16 {
+    pub const fn get_opcode(&self) -> u16 {
         (self.memory[self.pc as usize] as u16) << 8 | (self.memory[self.pc as usize + 1] as u16)
     }
 
@@ -148,11 +149,16 @@ impl Chip8 {
         (x, y, nnn, kk, n)
     }
 
-    pub fn update(&mut self) {
+    pub const fn is_hi_res(&self) -> bool {
+        return self.hi_res;
+    }
+
+    pub fn update(&mut self) -> Result<(), Error> {
         self.update_timers();
-        (0..self.tick_rate).for_each(|_| {
-            self.tick();
-        });
+        for _ in 0..self.tick_rate {
+            self.tick()?;
+        }
+        Ok(())
     }
 
     fn update_timers(&mut self) {
@@ -186,6 +192,8 @@ impl Chip8 {
 
     // Start opcodes
 
+    fn scd(&mut self) {}
+
     /// Clear screen
     fn cls(&mut self) {
         self.gfx_buffer = [false; SCREEN_SIZE];
@@ -194,9 +202,31 @@ impl Chip8 {
     }
 
     /// Return from subroutine
-    fn ret(&mut self) {
+    fn ret(&mut self) -> Result<(), Error> {
+        if self.sp < 1 {
+            return Err(anyhow::anyhow!("Stack underflow"));
+        }
         self.sp -= 1;
         self.pc = self.stack[self.sp as usize];
+        self.pc += 2;
+        Ok(())
+    }
+
+    fn scr(&mut self) {}
+
+    fn scl(&mut self) {}
+
+    fn exit(&mut self) {
+        panic!("Exit");
+    }
+
+    fn low(&mut self) {
+        self.hi_res = false;
+        self.pc += 2;
+    }
+
+    fn high(&mut self) {
+        self.hi_res = true;
         self.pc += 2;
     }
 
@@ -206,10 +236,14 @@ impl Chip8 {
     }
 
     /// Calls subroutine at NNN
-    fn call_addr(&mut self, nnn: u16) {
+    fn call_addr(&mut self, nnn: u16) -> Result<(), Error> {
+        if self.sp >= (size_of::<u16>() * STACK_SIZE) as u8 {
+            return Err(anyhow::anyhow!("Stack overflow"));
+        }
         self.stack[self.sp as usize] = self.pc;
         self.sp += 1;
         self.pc = nnn;
+        Ok(())
     }
 
     /// Skips the next instruction if VX equals NN.
@@ -277,9 +311,11 @@ impl Chip8 {
 
     ///Adds VY to VX. VF is set to 1 when there's a carry, and to 0 when there isn't.
     fn add_vx_vy(&mut self, x: u8, y: u8) {
+        let flag = self.v[y as usize] > (0xFF - self.v[x as usize]);
+
         self.v[x as usize] += self.v[y as usize];
 
-        if self.v[y as usize] > (0xFF - self.v[x as usize]) {
+        if flag {
             self.v[0xF] = 1;
         } else {
             self.v[0xF] = 0;
@@ -290,39 +326,47 @@ impl Chip8 {
 
     fn sub_vx_vy(&mut self, x: u8, y: u8) {
         // 8XY5 - VY is subtracted from VX. VF is set to 0 when there's a borrow, and 1 when there isn't.
-        if self.v[y as usize] > self.v[x as usize] {
+        let flag = self.v[y as usize] > self.v[x as usize];
+
+        self.v[x as usize] -= self.v[y as usize];
+
+        if flag {
             self.v[0xF] = 0;
         } else {
             self.v[0xF] = 1;
         }
 
-        self.v[x as usize] -= self.v[y as usize];
         self.pc += 2;
     }
 
     /// Shifts VX right by one. VF is set to the value of the least significant bit of VX before the shift.
     fn shr_vx_vy(&mut self, x: u8) {
-        self.v[0xF] = self.v[x as usize] & 0x1;
+        let flag = self.v[x as usize] & 0x1;
         self.v[x as usize] >>= 1;
+        self.v[0xF] = flag;
         self.pc += 2;
     }
 
     /// Sets VX to VY minus VX. VF is set to 0 when there's a borrow, and 1 when there isn't.
     fn subn_vx_vy(&mut self, x: u8, y: u8) {
-        if self.v[x as usize] > self.v[y as usize] {
-            self.v[0xF] = 0;
-        } else {
+        let flag = self.v[y as usize] >= self.v[x as usize];
+
+        self.v[x as usize] = self.v[y as usize].wrapping_sub(self.v[x as usize]);
+
+        if flag {
             self.v[0xF] = 1;
+        } else {
+            self.v[0xF] = 0;
         }
 
-        self.v[x as usize] = self.v[y as usize] - self.v[x as usize];
         self.pc += 2;
     }
 
     /// Shifts VX left by one. VF is set to the value of the most significant bit of VX before the shift.
     fn shl_vx_vy(&mut self, x: u8) {
-        self.v[0xF] = self.v[x as usize] >> 7;
+        let flag = self.v[x as usize] >> 7;
         self.v[x as usize] <<= 1;
+        self.v[0xF] = flag;
         self.pc += 2;
     }
 
@@ -351,7 +395,7 @@ impl Chip8 {
     fn rnd_vx_byte(&mut self, x: u8, kk: u8) {
         match self.rnd_seed {
             Some(ref mut seed) => {
-                self.v[x as usize] = (seed.next_u32() as u8 % 0xFF + 1) & kk;
+                self.v[x as usize] = (seed.next_u32() as u8) & kk;
             }
             None => self.v[x as usize] = 1 & kk,
         }
@@ -442,13 +486,6 @@ impl Chip8 {
 
     /// Adds VX to I
     fn add_i_vx(&mut self, x: u8) {
-        // VF is set to 1 when range overflow (I+VX>0xFFF), and 0 when there isn't.
-        if (self.i + self.v[x as usize] as u16) > 0xFFF {
-            self.v[0xF] = 1;
-        } else {
-            self.v[0xF] = 0;
-        }
-
         self.i += self.v[x as usize] as u16;
         self.pc += 2;
     }
@@ -458,6 +495,8 @@ impl Chip8 {
         self.i = self.v[x as usize] as u16 * 0x5;
         self.pc += 2;
     }
+
+    fn ld_hf_vx(&mut self) {}
 
     /// Stores the Binary-coded decimal representation of VX at the addresses I, I plus 1, and I plus 2
     fn ld_b_vx(&mut self, x: u8) {
@@ -477,6 +516,10 @@ impl Chip8 {
         self.pc += 2;
     }
 
+    fn ld_r_vx(&mut self) {}
+
+    fn ld_vx_r(&mut self) {}
+
     fn ld_vx_i(&mut self, x: u8) {
         (0..=x).for_each(|i| {
             self.v[i as usize] = self.memory[self.i as usize + i as usize];
@@ -488,22 +531,22 @@ impl Chip8 {
 
     // End opcodes
 
-    fn tick(&mut self) {
+    fn tick(&mut self) -> Result<(), Error> {
         let opcode = self.get_opcode();
         let nibbles = self.get_nibbles(opcode);
         let (x, y, nnn, kk, _n) = self.get_variables(opcode);
 
         match nibbles {
-            (0, 0, 0xC, _) => unimplemented!("SCD nibble"),
+            (0, 0, 0xC, _) => return Err(anyhow::anyhow!("SCD nibble not implemented yet")),
             (0, 0, 0xE, 0) => self.cls(),
-            (0, 0, 0xE, 0xE) => self.ret(),
-            (0, 0, 0xF, 0xB) => unimplemented!("SCR"),
-            (0, 0, 0xF, 0xC) => unimplemented!("SCL"),
-            (0, 0, 0xF, 0xD) => unimplemented!("EXIT"),
-            (0, 0, 0xF, 0xE) => unimplemented!("LOW"),
-            (0, 0, 0xF, 0xF) => unimplemented!("HIGH"),
+            (0, 0, 0xE, 0xE) => self.ret()?,
+            (0, 0, 0xF, 0xB) => return Err(anyhow::anyhow!("SCR not implemented yet")),
+            (0, 0, 0xF, 0xC) => return Err(anyhow::anyhow!("SCL not implemented yet")),
+            (0, 0, 0xF, 0xD) => self.exit(),
+            (0, 0, 0xF, 0xE) => self.low(),
+            (0, 0, 0xF, 0xF) => self.high(),
             (0x1, _, _, _) => self.jp_addr(nnn),
-            (0x2, _, _, _) => self.call_addr(nnn),
+            (0x2, _, _, _) => self.call_addr(nnn)?,
             (0x3, _, _, _) => self.se_vx_byte(x, kk),
             (0x4, _, _, _) => self.sne_vx_byte(x, kk),
             (0x5, _, _, _) => self.se_vx_vy(x, y),
@@ -531,14 +574,21 @@ impl Chip8 {
             (0xF, _, 0x1, 0x8) => self.ld_st_vx(x),
             (0xF, _, 0x1, 0xE) => self.add_i_vx(x),
             (0xF, _, 0x2, 0x9) => self.ld_f_vx(x),
-            (0xF, _, 0x3, 0x0) => unimplemented!("LD HF, Vx"),
+            (0xF, _, 0x3, 0x0) => return Err(anyhow::anyhow!("LD HF, Vx not implemented yet")),
             (0xF, _, 0x3, 0x3) => self.ld_b_vx(x),
             (0xF, _, 0x5, 0x5) => self.ld_i_vx(x),
-            (0xF, _, 0x7, 0x5) => unimplemented!("LD R, Vx"), // FX75
-            (0xF, _, 0x8, 0x5) => unimplemented!("LD Vx, R"), // FX85
+            (0xF, _, 0x7, 0x5) => return Err(anyhow::anyhow!("LD R, Vx not implemented yet")), // FX75
+            (0xF, _, 0x8, 0x5) => return Err(anyhow::anyhow!("LD Vx, R not implemented yet")), // FX85
             (0xF, _, 0x6, 0x5) => self.ld_vx_i(x),
-            (_, _, _, _) => panic!("Unknown opcode: {opcode:#04X}"),
+            (_, _, _, _) => {
+                return Err(anyhow::anyhow!(
+                    "Unknown opcode: {opcode:#04X} at {0:#04X}",
+                    self.pc - ENTRY_POINT as u16,
+                ))
+            }
         }
+
+        Ok(())
     }
 }
 
