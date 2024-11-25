@@ -3,35 +3,50 @@ name = "pachip8risu-playdate"
 version = "0.1.0"
 edition = "2021"
 
-[package.metadata.cargo-xbuild]
-memcpy = false
-sysroot_path = "target/sysroot"
-panic_immediate_abort = false
+[lib]
+path = "src/lib.rs"
+crate-type = [
+    "staticlib", # for hardware
+    "dylib",     # for simulator
+    "rlib",      # to link with bin
+]
+
+[dependencies]
+pachip8risu = { path = ".." }
+playdate = "*"
+rand = { version = "0.8.3", features = ["small_rng"], default-features = false }
+playdate-controls = "*"
+num-traits = { version = "0.2", default-features = false, features = ["libm"] }
+
+# Playdate Package Info
+# doc: https://github.com/boozook/playdate/blob/main/support/build/README.md#metadata
+# official doc: https://sdk.play.date/#pdxinfo
+[package.metadata.playdate]
+name = "Pachip8risu"
+author = "Giorgio Pomettini"
+version = "0.1.0"
+bundle-id = "com.pomettini.chip8"
+description = "Chip-8 emulator"
+# image-path = "img/system"
+
+# Assets Rules
+# doc: https://github.com/boozook/playdate/blob/main/support/build/README.md#assets
+[package.metadata.playdate.assets]
+# "img/system/" = "assets/launcher/card.png"
+
+# Assets Configuration
+[package.metadata.playdate.options.assets]
+dependencies = true    # allow to build assets for dependencies (default is `true`)
+overwrite = true       # overwrite existing (default is `true`)
+method = "link"        # "copy" or "link"   (default is `link`)
+follow-symlinks = true # follow symlinks    (default is `true`)
 
 [profile.dev]
 panic = "abort"
-opt-level = 'z'
+opt-level = 3
 lto = true
-overflow-checks = false
 
 [profile.release]
 panic = "abort"
-opt-level = 'z'
+opt-level = 3
 lto = true
-overflow-checks = false
-
-[lib]
-crate-type = ["staticlib", "cdylib"]
-
-[dependencies]
-crankstart = { path = "./crankstart" }
-crankstart-sys = { path = "./crankstart/crankstart-sys" }
-anyhow = { version = "1.0.31", default-features = false }
-euclid = { version = "0.22.9", default-features = false, features = [ "libm" ] }
-hashbrown = "0.14.0"
-pachip8risu = { path = ".." }
-
-[dependencies.cstr_core]
-version = "=0.1.2"
-default-features = false
-features = [ "alloc" ]
