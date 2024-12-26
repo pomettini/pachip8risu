@@ -192,7 +192,10 @@ impl Chip8 {
 
     // Start opcodes
 
-    fn scd(&mut self) {}
+    fn scd(&mut self, n: u8) {
+        self.gfx_buffer.rotate_right(SCREEN_WIDTH * n as usize);
+        self.pc += 2;
+    }
 
     /// Clear screen
     fn cls(&mut self) {
@@ -212,9 +215,15 @@ impl Chip8 {
         Ok(())
     }
 
-    fn scr(&mut self) {}
+    fn scr(&mut self) {
+        self.gfx_buffer.rotate_right(4);
+        self.pc += 2;
+    }
 
-    fn scl(&mut self) {}
+    fn scl(&mut self) {
+        self.gfx_buffer.rotate_left(4);
+        self.pc += 2;
+    }
 
     fn exit(&mut self) {
         panic!("Exit");
@@ -534,14 +543,14 @@ impl Chip8 {
     fn tick(&mut self) -> Result<(), Error> {
         let opcode = self.get_opcode();
         let nibbles = self.get_nibbles(opcode);
-        let (x, y, nnn, kk, _n) = self.get_variables(opcode);
+        let (x, y, nnn, kk, n) = self.get_variables(opcode);
 
         match nibbles {
-            (0, 0, 0xC, _) => return Err(anyhow::anyhow!("SCD nibble not implemented yet")),
+            (0, 0, 0xC, _) => self.scd(n),
             (0, 0, 0xE, 0) => self.cls(),
             (0, 0, 0xE, 0xE) => self.ret()?,
-            (0, 0, 0xF, 0xB) => return Err(anyhow::anyhow!("SCR not implemented yet")),
-            (0, 0, 0xF, 0xC) => return Err(anyhow::anyhow!("SCL not implemented yet")),
+            (0, 0, 0xF, 0xB) => self.scr(),
+            (0, 0, 0xF, 0xC) => self.scl(),
             (0, 0, 0xF, 0xD) => self.exit(),
             (0, 0, 0xF, 0xE) => self.low(),
             (0, 0, 0xF, 0xF) => self.high(),

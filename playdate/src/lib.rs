@@ -11,6 +11,7 @@ use controls::buttons::PDButtonsExt;
 use controls::peripherals::Buttons;
 use pachip8risu::Chip8;
 use pd::sys::ffi::LCDColor;
+use pd::sys::log::println;
 
 use core::ptr::NonNull;
 use pd::display::Display;
@@ -68,21 +69,23 @@ impl Update for State {
                 println!("{}", e);
             }
         }
-
-        // log_to_console!("{0:#04X}", self.cpu.get_opcode());
-
+        
         let buttons = Buttons::Cached();
 
         if buttons.pushed().a() {
-            for i in 0..16 {
-                self.cpu.keys[i] = true;
-            }
+            self.cpu.keys[1] = true;
+        }
+
+        if buttons.pushed().b() {
+            self.cpu.keys[2] = true;
         }
 
         if buttons.released().a() {
-            for i in 0..16 {
-                self.cpu.keys[i] = false;
-            }
+            self.cpu.keys[1] = false;
+        }
+
+        if buttons.released().b() {
+            self.cpu.keys[2] = false;
         }
 
         if !self.cpu.is_hi_res() {
