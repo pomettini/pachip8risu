@@ -11,7 +11,6 @@ use controls::buttons::PDButtonsExt;
 use controls::peripherals::Buttons;
 use pachip8risu::Chip8;
 use pd::sys::ffi::LCDColor;
-use pd::sys::log::println;
 
 use core::ptr::NonNull;
 use pd::display::Display;
@@ -38,7 +37,7 @@ impl State {
         // TODO: Init the state
 
         let mut cpu = Chip8::new();
-        cpu.load_rom(include_bytes!("../../roms/scrolling.rom"), Some(10));
+        cpu.load_rom(include_bytes!("../../roms/sweetcopter.ch8"), Some(10));
 
         let ms = System::Cached().seconds_since_epoch();
         cpu.set_random_seed(ms as u64);
@@ -69,6 +68,8 @@ impl Update for State {
                 println!("{}", e);
             }
         }
+
+        // println!("{0:#04X}", self.cpu.get_opcode());
         
         let buttons = Buttons::Cached();
 
