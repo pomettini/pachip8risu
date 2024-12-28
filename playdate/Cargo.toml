@@ -13,10 +13,12 @@ crate-type = [
 
 [dependencies]
 pachip8risu = { path = ".." }
-playdate = "*"
-rand = { version = "0.8.3", features = ["small_rng"], default-features = false }
-playdate-controls = "*"
-num-traits = { version = "0.2", default-features = false, features = ["libm"] }
+playdate = { git = "https://github.com/boozook/playdate" }
+rand = { version = "0.8.5", features = ["small_rng"], default-features = false }
+playdate-controls = { git = "https://github.com/boozook/playdate" }
+num-traits = { version = "0.2.19", default-features = false, features = [
+    "libm",
+] }
 
 # Playdate Package Info
 # doc: https://github.com/boozook/playdate/blob/main/support/build/README.md#metadata

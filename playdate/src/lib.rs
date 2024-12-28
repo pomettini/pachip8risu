@@ -37,7 +37,7 @@ impl State {
         // TODO: Init the state
 
         let mut cpu = Chip8::new();
-        cpu.load_rom(include_bytes!("../../roms/sweetcopter.ch8"), Some(10));
+        cpu.load_rom(include_bytes!("../../roms/sweetcopter.ch8"), Some(160));
 
         let ms = System::Cached().seconds_since_epoch();
         cpu.set_random_seed(ms as u64);
@@ -70,11 +70,13 @@ impl Update for State {
         }
 
         // println!("{0:#04X}", self.cpu.get_opcode());
-        
+
         let buttons = Buttons::Cached();
 
         if buttons.pushed().a() {
-            self.cpu.keys[1] = true;
+            for i in 0..15 {
+                self.cpu.keys[i] = true;
+            }
         }
 
         if buttons.pushed().b() {
@@ -82,7 +84,9 @@ impl Update for State {
         }
 
         if buttons.released().a() {
-            self.cpu.keys[1] = false;
+            for i in 0..15 {
+                self.cpu.keys[i] = false;
+            }
         }
 
         if buttons.released().b() {
