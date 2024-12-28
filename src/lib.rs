@@ -19,9 +19,10 @@ const SCREEN_HEIGHT: usize = 32;
 const SCREEN_SIZE: usize = (SCREEN_WIDTH * 2) * (SCREEN_HEIGHT * 2);
 const ENTRY_POINT: usize = 512;
 const DEFAULT_TICK_RATE: u16 = 10;
+const BIG_FONT_ADDRESS: usize = 0x50;
 
 // Chip-8
-const FONT: [u8; 80] = [
+const FONT: [u8; 5 * 16] = [
     0xF0, 0x90, 0x90, 0x90, 0xF0, //0
     0x20, 0x60, 0x20, 0x20, 0x70, //1
     0xF0, 0x10, 0xF0, 0x80, 0xF0, //2
@@ -41,7 +42,7 @@ const FONT: [u8; 80] = [
 ];
 
 // Super-Chip and variants
-const _BIG_FONT: [u8; 160] = [
+const BIG_FONT: [u8; 10 * 16] = [
     0xFF, 0xFF, 0xC3, 0xC3, 0xC3, 0xC3, 0xC3, 0xC3, 0xFF, 0xFF, // 0
     0x18, 0x78, 0x78, 0x18, 0x18, 0x18, 0x18, 0x18, 0xFF, 0xFF, // 1
     0xFF, 0xFF, 0x03, 0x03, 0xFF, 0xFF, 0xC0, 0xC0, 0xFF, 0xFF, // 2
@@ -117,6 +118,9 @@ impl Chip8 {
         // Load font at address 0x000
         self.memory[0..FONT.len()].copy_from_slice(&FONT);
 
+        // Load big font at address 0x050
+        self.memory[BIG_FONT_ADDRESS..BIG_FONT_ADDRESS + BIG_FONT.len()].copy_from_slice(&BIG_FONT);
+
         // Set tick rate
         if let Some(x) = tick_rate {
             self.tick_rate = x;
@@ -150,7 +154,7 @@ impl Chip8 {
     }
 
     pub const fn is_hi_res(&self) -> bool {
-        return self.hi_res;
+        self.hi_res
     }
 
     pub fn update(&mut self) -> Result<(), Error> {
@@ -190,10 +194,31 @@ impl Chip8 {
         self.st == 1
     }
 
+    pub const fn width(&self) -> usize {
+        if self.is_hi_res() {
+            128
+        } else {
+            64
+        }
+    }
+
+    pub const fn height(&self) -> usize {
+        if self.is_hi_res() {
+            64
+        } else {
+            32
+        }
+    }
+
     // Start opcodes
 
     fn scd(&mut self, n: u8) {
         self.gfx_buffer.rotate_right(SCREEN_WIDTH * n as usize);
+        self.pc += 2;
+    }
+
+    fn scu(&mut self, n: u8) {
+        self.gfx_buffer.rotate_left(SCREEN_WIDTH * n as usize);
         self.pc += 2;
     }
 
@@ -217,11 +242,13 @@ impl Chip8 {
 
     fn scr(&mut self) {
         self.gfx_buffer.rotate_right(4);
+        self.should_draw = true;
         self.pc += 2;
     }
 
     fn scl(&mut self) {
         self.gfx_buffer.rotate_left(4);
+        self.should_draw = true;
         self.pc += 2;
     }
 
@@ -413,29 +440,50 @@ impl Chip8 {
     }
 
     /// Draws a sprite at coordinate (VX, VY) that has a width of 8 pixels and a height of N pixels.
-    fn drw_vx_vy_nibble(&mut self, x: u8, y: u8, opcode: u16) {
-        let vx = self.v[x as usize] as u16;
-        let vy = self.v[y as usize] as u16;
-        let height = opcode & 0x000F;
-        self.v[0xF] &= 0;
+    /// Shamelessly stolen from https://github.com/machinetech/chip8 until I figure out how it works
+    fn drw_vx_vy_nibble(&mut self, x: u8, y: u8, n: u8) {
+        let gfx_start_x = self.v[x as usize] as usize;
+        let gfx_start_y = self.v[y as usize] as usize;
 
-        // TODO: Needs refactor
-        (0..height).for_each(|y| {
-            let pixel = self.memory[(self.i + y) as usize];
-            (0..8).for_each(|x| {
-                if pixel & (0x80 >> x) > 0 {
-                    let index = (x + vx + (y + vy) * SCREEN_WIDTH as u16)
-                        .clamp(0, SCREEN_SIZE as u16 - 1) as usize;
-                    if self.gfx_buffer[index] {
-                        self.v[0xF] = 1;
+        // Determine sprite dimensions
+        let sprite_width = if n == 0 && self.is_hi_res() { 16 } else { 8 };
+        let sprite_height = if n == 0 { 16 } else { n as usize };
+
+        self.v[0x0F] = 0; // Clear the collision flag
+
+        for y_offset in 0..sprite_height {
+            let sprite_memory_index = self.i as usize + y_offset * (sprite_width / 8);
+
+            // Retrieve the sprite row
+            let row_bits = if sprite_width == 16 {
+                let high_byte = self.memory[sprite_memory_index] as u16;
+                let low_byte = self.memory[sprite_memory_index + 1] as u16;
+                (high_byte << 8) | low_byte
+            } else {
+                self.memory[sprite_memory_index] as u16
+            };
+
+            for x_offset in 0..sprite_width {
+                let gfx_x = (gfx_start_x + x_offset) % self.width();
+                let gfx_y = (gfx_start_y + y_offset) % self.height();
+                let pixel_mask = 1 << (sprite_width - 1 - x_offset);
+                let sprite_pixel = (row_bits & pixel_mask) != 0;
+
+                if sprite_pixel {
+                    let gfx_index = gfx_x + gfx_y * self.width();
+                    let was_pixel_set = self.gfx_buffer[gfx_index];
+                    self.gfx_buffer[gfx_index] ^= true;
+
+                    if was_pixel_set && !self.gfx_buffer[gfx_index] {
+                        self.v[0x0F] = 1; // Collision detected
                     }
-                    self.gfx_buffer[index] ^= true;
-                }
-            });
-        });
 
-        self.should_draw = true;
-        self.pc += 2;
+                    self.should_draw = true;
+                }
+            }
+        }
+
+        self.pc += 2; // Increment the program counter
     }
 
     /// Skips the next instruction if the key stored in VX is pressed.
@@ -501,11 +549,14 @@ impl Chip8 {
 
     /// Sets I to the location of the sprite for the character in VX.
     fn ld_f_vx(&mut self, x: u8) {
-        self.i = self.v[x as usize] as u16 * 0x5;
+        self.i = self.v[x as usize] as u16 * 5;
         self.pc += 2;
     }
 
-    fn ld_hf_vx(&mut self) {}
+    fn ld_hf_vx(&mut self, x: u8) {
+        self.i = BIG_FONT_ADDRESS as u16 + self.v[x as usize] as u16 * 10;
+        self.pc += 2;
+    }
 
     /// Stores the Binary-coded decimal representation of VX at the addresses I, I plus 1, and I plus 2
     fn ld_b_vx(&mut self, x: u8) {
@@ -525,9 +576,13 @@ impl Chip8 {
         self.pc += 2;
     }
 
-    fn ld_r_vx(&mut self) {}
+    fn ld_r_vx(&mut self) {
+        unimplemented!();
+    }
 
-    fn ld_vx_r(&mut self) {}
+    fn ld_vx_r(&mut self) {
+        unimplemented!();
+    }
 
     fn ld_vx_i(&mut self, x: u8) {
         (0..=x).for_each(|i| {
@@ -547,6 +602,7 @@ impl Chip8 {
 
         match nibbles {
             (0, 0, 0xC, _) => self.scd(n),
+            (0, 0, 0xD, _) => self.scu(n),
             (0, 0, 0xE, 0) => self.cls(),
             (0, 0, 0xE, 0xE) => self.ret()?,
             (0, 0, 0xF, 0xB) => self.scr(),
@@ -574,7 +630,7 @@ impl Chip8 {
             (0xA, _, _, _) => self.ld_i_addr(nnn),
             (0xB, _, _, _) => self.jp_v0_addr(nnn),
             (0xC, _, _, _) => self.rnd_vx_byte(x, kk),
-            (0xD, _, _, _) => self.drw_vx_vy_nibble(x, y, opcode),
+            (0xD, _, _, _) => self.drw_vx_vy_nibble(x, y, n),
             (0xE, _, 0x9, 0xE) => self.skp_vx(x),
             (0xE, _, 0xA, 0x1) => self.sknp_vx(x),
             (0xF, _, 0x0, 0x7) => self.ld_vx_dt(x),
@@ -583,11 +639,11 @@ impl Chip8 {
             (0xF, _, 0x1, 0x8) => self.ld_st_vx(x),
             (0xF, _, 0x1, 0xE) => self.add_i_vx(x),
             (0xF, _, 0x2, 0x9) => self.ld_f_vx(x),
-            (0xF, _, 0x3, 0x0) => return Err(anyhow::anyhow!("LD HF, Vx not implemented yet")),
+            (0xF, _, 0x3, 0x0) => self.ld_hf_vx(x),
             (0xF, _, 0x3, 0x3) => self.ld_b_vx(x),
             (0xF, _, 0x5, 0x5) => self.ld_i_vx(x),
-            (0xF, _, 0x7, 0x5) => return Err(anyhow::anyhow!("LD R, Vx not implemented yet")), // FX75
-            (0xF, _, 0x8, 0x5) => return Err(anyhow::anyhow!("LD Vx, R not implemented yet")), // FX85
+            (0xF, _, 0x7, 0x5) => self.ld_r_vx(),
+            (0xF, _, 0x8, 0x5) => self.ld_vx_r(),
             (0xF, _, 0x6, 0x5) => self.ld_vx_i(x),
             (_, _, _, _) => {
                 return Err(anyhow::anyhow!(
