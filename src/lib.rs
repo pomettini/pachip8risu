@@ -1,7 +1,11 @@
 #![no_std]
 
+extern crate alloc;
 extern crate rand;
 
+use alloc::boxed::Box;
+use alloc::vec;
+use alloc::vec::Vec;
 use anyhow::Error;
 use rand::rngs::SmallRng;
 use rand::RngCore;
@@ -73,13 +77,13 @@ pub struct Chip8 {
     pub keys: [bool; KEYS],
 
     // RAM
-    memory: [u8; RAM_SIZE],
-    gfx_buffer: [bool; SCREEN_SIZE],
+    memory: Box<[u8]>,
+    pub gfx_buffer: Box<[bool]>,
 
     // Needed for the emulator
     rnd_seed: Option<SmallRng>,
     tick_rate: u16,
-    should_draw: bool,
+    pub should_draw: bool,
     hi_res: bool,
 }
 
@@ -95,8 +99,8 @@ impl Chip8 {
             dt: 0,
             st: 0,
             keys: [false; KEYS],
-            memory: [0; RAM_SIZE],
-            gfx_buffer: [false; SCREEN_SIZE],
+            memory: vec![0; RAM_SIZE].into_boxed_slice(),
+            gfx_buffer: vec![false; SCREEN_SIZE].into_boxed_slice(),
             rnd_seed: None,
             tick_rate: DEFAULT_TICK_RATE,
             should_draw: false,
@@ -107,8 +111,8 @@ impl Chip8 {
     pub fn reset(&mut self) {
         self.pc = ENTRY_POINT as u16;
         self.sp = 0;
-        self.gfx_buffer = [false; SCREEN_SIZE];
-        self.memory = [0; RAM_SIZE];
+        self.memory = vec![0; RAM_SIZE].into_boxed_slice();
+        self.gfx_buffer = vec![false; SCREEN_SIZE].into_boxed_slice();
     }
 
     pub fn load_rom(&mut self, rom_buf: &[u8], tick_rate: Option<u16>) {
@@ -132,7 +136,7 @@ impl Chip8 {
         self.rnd_seed = Some(small_rng);
     }
 
-    pub const fn get_opcode(&self) -> u16 {
+    pub fn get_opcode(&self) -> u16 {
         (self.memory[self.pc as usize] as u16) << 8 | (self.memory[self.pc as usize + 1] as u16)
     }
 
@@ -158,6 +162,7 @@ impl Chip8 {
     }
 
     pub fn update(&mut self) -> Result<(), Error> {
+        self.should_draw = false;
         self.update_timers();
         for _ in 0..self.tick_rate {
             self.tick()?;
@@ -175,19 +180,21 @@ impl Chip8 {
         }
     }
 
-    pub fn draw(&mut self) -> Option<[bool; SCREEN_SIZE]> {
+    /*
+    pub fn draw(&mut self) -> Option<Box<[bool; SCREEN_SIZE]>> {
         if self.should_draw {
             self.should_draw = false;
-            Some(self.gfx_buffer)
+            Some(Box::new(*self.gfx_buffer))
         } else {
             None
         }
     }
 
     #[must_use]
-    pub const fn draw_unoptimized(&self) -> [bool; SCREEN_SIZE] {
+    pub const fn draw_unoptimized(&mut self) -> Box<[bool; SCREEN_SIZE]> {
         self.gfx_buffer
     }
+    */
 
     #[must_use]
     pub const fn play_sound(&self) -> bool {
@@ -224,7 +231,7 @@ impl Chip8 {
 
     /// Clear screen
     fn cls(&mut self) {
-        self.gfx_buffer = [false; SCREEN_SIZE];
+        self.gfx_buffer = vec![false; SCREEN_SIZE].into_boxed_slice();
         self.should_draw = true;
         self.pc += 2;
     }

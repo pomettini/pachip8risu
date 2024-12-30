@@ -37,7 +37,7 @@ impl State {
         // TODO: Init the state
 
         let mut cpu = Chip8::new();
-        cpu.load_rom(include_bytes!("../../roms/sweetcopter.ch8"), Some(160));
+        cpu.load_rom(include_bytes!("../../roms/breakout.ch8"), Some(10));
 
         let ms = System::Cached().seconds_since_epoch();
         cpu.set_random_seed(ms as u64);
@@ -48,7 +48,7 @@ impl State {
     /// System event handler
     fn event(&'static mut self, event: SystemEvent) -> EventLoopCtrl {
         if let SystemEvent::Init = event {
-            Display::Default().set_refresh_rate(50.0);
+            Display::Default().set_refresh_rate(30.0);
 
             // Register our update handler that defined below
             self.set_update_handler();
@@ -93,8 +93,8 @@ impl Update for State {
             self.cpu.keys[2] = false;
         }
 
-        if !self.cpu.is_hi_res() {
-            if let Some(gfx_buffer) = self.cpu.draw() {
+        if self.cpu.should_draw {
+            if !self.cpu.is_hi_res() {
                 for p in 0..WIDTH * HEIGHT {
                     let x = 8 + (p % 64) * SCALE;
                     let y = 24 + (p / 64) * SCALE;
@@ -103,12 +103,10 @@ impl Update for State {
                         y,
                         SCALE,
                         SCALE,
-                        draw_pixel_color(gfx_buffer[p as usize]),
+                        draw_pixel_color(self.cpu.gfx_buffer[p as usize]),
                     );
                 }
-            }
-        } else {
-            if let Some(gfx_buffer) = self.cpu.draw() {
+            } else {
                 for p in 0..WIDTH_HIRES * HEIGHT_HIRES {
                     let x = 8 + (p % 128) * SCALE_HIRES;
                     let y = 24 + (p / 128) * SCALE_HIRES;
@@ -117,7 +115,7 @@ impl Update for State {
                         y,
                         SCALE_HIRES,
                         SCALE_HIRES,
-                        draw_pixel_color(gfx_buffer[p as usize]),
+                        draw_pixel_color(self.cpu.gfx_buffer[p as usize]),
                     );
                 }
             }
@@ -128,6 +126,14 @@ impl Update for State {
         }
 
         UpdateCtrl::Continue
+    }
+}
+
+const fn draw_pixel_color(is_on: bool) -> LCDColor {
+    if is_on {
+        LCDColorConst::BLACK
+    } else {
+        LCDColorConst::WHITE
     }
 }
 
@@ -147,14 +153,6 @@ pub fn event_handler(
 
     // Call state.event
     unsafe { STATE.as_mut().expect("impossible") }.event(event)
-}
-
-const fn draw_pixel_color(is_on: bool) -> LCDColor {
-    if is_on {
-        LCDColorConst::BLACK
-    } else {
-        LCDColorConst::WHITE
-    }
 }
 
 // Needed for debug build, absolutely optional
