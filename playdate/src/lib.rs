@@ -26,7 +26,7 @@ const HEIGHT: i32 = 32;
 const WIDTH_HIRES: i32 = 128;
 const HEIGHT_HIRES: i32 = 64;
 const SCALE: i32 = 6;
-const SCALE_HIRES: i32 = 3;
+const SCALE_HIRES: i32 = 2;
 
 struct State {
     cpu: Chip8,
@@ -48,7 +48,7 @@ impl State {
     /// System event handler
     fn event(&'static mut self, event: SystemEvent) -> EventLoopCtrl {
         if let SystemEvent::Init = event {
-            Display::Default().set_refresh_rate(50.0);
+            Display::Default().set_refresh_rate(30.0);
 
             // Register our update handler that defined below
             self.set_update_handler();
@@ -91,60 +91,44 @@ impl Update for State {
             }
         }
 
-        /*
-        if self.cpu.should_draw {
-            if !self.cpu.is_hi_res() {
-                for p in 0..WIDTH * HEIGHT {
-                    let x = 8 + (p % 64) * SCALE;
-                    let y = 24 + (p / 64) * SCALE;
-                    graphics.fill_rect(
-                        x,
-                        y,
-                        SCALE,
-                        SCALE,
-                        draw_pixel_color(self.cpu.gfx_buffer[p as usize]),
-                    );
-                }
-            } else {
-                for p in 0..WIDTH_HIRES * HEIGHT_HIRES {
-                    let x = 8 + (p % 128) * SCALE_HIRES;
-                    let y = 24 + (p / 128) * SCALE_HIRES;
-                    graphics.fill_rect(
-                        x,
-                        y,
-                        SCALE_HIRES,
-                        SCALE_HIRES,
-                        draw_pixel_color(self.cpu.gfx_buffer[p as usize]),
-                    );
-                }
-            }
-        }
-        */
-
         if self.cpu.play_sound() {
             // TODO: Add beep
         }
 
+        let frame_width = 52;
+        let scale = 2;
+        let lcd_width = 128;
+        let lcd_height = 64;
+
         let frame = graphics.get_frame().unwrap();
 
-        let mut i = 0;
-        loop {
-            let start = i * 8;
-            let end = (i + 1) * 8;
-            frame[i + ((i / 16) * 36)] = draw_row(&self.cpu.gfx_buffer[start..end]);
+        if self.cpu.should_draw {
+            for y in 0..lcd_height {
+                for x in 0..lcd_width {
+                    let pixel = self.cpu.gfx_buffer[y * lcd_width + x];
 
-            i += 1;
+                    // Draw a 3x3 block for each pixel
+                    for sy in 0..scale {
+                        for sx in 0..scale {
+                            let scaled_x = x * scale + sx;
+                            let scaled_y = y * scale + sy;
 
-            if i >= ((LCD_ROWSIZE * LCD_ROWS) - 1) as usize {
-                break;
-            }
+                            // Calculate the position in the frame
+                            let byte_index = (scaled_y * frame_width) + (scaled_x / 8);
+                            let bit_index = 7 - (scaled_x % 8); // Bit order is reversed in each byte
 
-            if i >= 1024 {
-                break;
+                            if pixel {
+                                frame[byte_index] |= 1 << bit_index; // Set the pixel
+                            } else {
+                                frame[byte_index] &= !(1 << bit_index); // Clear the pixel
+                            }
+                        }
+                    }
+                }
             }
         }
 
-        graphics.mark_updated_rows(0, LCD_ROWS as i32 - 1);
+        graphics.mark_updated_rows(0, 128);
 
         System::Cached().draw_fps(0, 0);
 

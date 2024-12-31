@@ -45,12 +45,12 @@ follow-symlinks = true # follow symlinks    (default is `true`)
 debug = 1
 codegen-units = 1
 panic = "abort"
-opt-level = 3
+opt-level = "z"
 lto = "fat"
 
 [profile.release]
 debug = 1
 codegen-units = 1
 panic = "abort"
-opt-level = 3
+opt-level = "z"
 lto = "fat"
