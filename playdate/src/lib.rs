@@ -10,23 +10,16 @@ extern crate playdate_controls as controls;
 use controls::buttons::PDButtonsExt;
 use controls::peripherals::Buttons;
 use pachip8risu::Chip8;
-use pd::sys::ffi::{LCDColor, LCD_COLUMNS, LCD_ROWS, LCD_ROWSIZE};
+use pd::sys::ffi::LCD_ROWSIZE;
 
+use core::iter::Scan;
 use core::ptr::NonNull;
 use pd::display::Display;
-use pd::graphics::bitmap::*;
 use pd::graphics::*;
 use pd::sys::ffi::PlaydateAPI;
 use pd::sys::EventLoopCtrl;
 use pd::system::prelude::*;
 use pd::system::update::UpdateCtrl;
-
-const WIDTH: i32 = 64;
-const HEIGHT: i32 = 32;
-const WIDTH_HIRES: i32 = 128;
-const HEIGHT_HIRES: i32 = 64;
-const SCALE: i32 = 6;
-const SCALE_HIRES: i32 = 2;
 
 struct State {
     cpu: Chip8,
@@ -95,26 +88,25 @@ impl Update for State {
             // TODO: Add beep
         }
 
-        let frame_width = 52;
-        let scale = 2;
-        let lcd_width = 128;
-        let lcd_height = 64;
-
         let frame = graphics.get_frame().unwrap();
 
+        const SCALE: usize = 5;
+        const LCD_WIDTH: usize = 64;
+        const LCD_HEIGHT: usize = 32;
+
         if self.cpu.should_draw {
-            for y in 0..lcd_height {
-                for x in 0..lcd_width {
-                    let pixel = self.cpu.gfx_buffer[y * lcd_width + x];
+            for y in 0..LCD_HEIGHT {
+                for x in 0..LCD_WIDTH {
+                    let pixel = !self.cpu.gfx_buffer[y * LCD_WIDTH + x];
 
                     // Draw a 3x3 block for each pixel
-                    for sy in 0..scale {
-                        for sx in 0..scale {
-                            let scaled_x = x * scale + sx;
-                            let scaled_y = y * scale + sy;
+                    for sy in 0..SCALE {
+                        for sx in 0..SCALE {
+                            let scaled_x = x * SCALE + sx;
+                            let scaled_y = y * SCALE + sy;
 
                             // Calculate the position in the frame
-                            let byte_index = (scaled_y * frame_width) + (scaled_x / 8);
+                            let byte_index = (scaled_y * LCD_ROWSIZE as usize) + (scaled_x / 8);
                             let bit_index = 7 - (scaled_x % 8); // Bit order is reversed in each byte
 
                             if pixel {
@@ -126,9 +118,17 @@ impl Update for State {
                     }
                 }
             }
-        }
 
-        graphics.mark_updated_rows(0, 128);
+            // println!("{}, {}", self.cpu.rows_start, self.cpu.rows_end);
+
+            graphics.mark_updated_rows(
+                (self.cpu.rows_start * SCALE as u8).into(),
+                (self.cpu.rows_end * SCALE as u8).into(),
+            );
+
+            self.cpu.rows_start = u8::MAX;
+            self.cpu.rows_end = 0;
+        }
 
         System::Cached().draw_fps(0, 0);
 

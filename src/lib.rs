@@ -3,9 +3,11 @@
 extern crate alloc;
 extern crate rand;
 
+use core::cmp::max;
+use core::cmp::min;
+
 use alloc::boxed::Box;
 use alloc::vec;
-use alloc::vec::Vec;
 use anyhow::Error;
 use rand::rngs::SmallRng;
 use rand::RngCore;
@@ -85,6 +87,9 @@ pub struct Chip8 {
     tick_rate: u16,
     pub should_draw: bool,
     hi_res: bool,
+
+    pub rows_start: u8,
+    pub rows_end: u8,
 }
 
 impl Chip8 {
@@ -105,6 +110,8 @@ impl Chip8 {
             tick_rate: DEFAULT_TICK_RATE,
             should_draw: false,
             hi_res: false,
+            rows_start: 0,
+            rows_end: 0,
         }
     }
 
@@ -179,22 +186,6 @@ impl Chip8 {
             self.st -= 1;
         }
     }
-
-    /*
-    pub fn draw(&mut self) -> Option<Box<[bool; SCREEN_SIZE]>> {
-        if self.should_draw {
-            self.should_draw = false;
-            Some(Box::new(*self.gfx_buffer))
-        } else {
-            None
-        }
-    }
-
-    #[must_use]
-    pub const fn draw_unoptimized(&mut self) -> Box<[bool; SCREEN_SIZE]> {
-        self.gfx_buffer
-    }
-    */
 
     #[must_use]
     pub const fn play_sound(&self) -> bool {
@@ -475,6 +466,9 @@ impl Chip8 {
                 let gfx_y = (gfx_start_y + y_offset) % self.height();
                 let pixel_mask = 1 << (sprite_width - 1 - x_offset);
                 let sprite_pixel = (row_bits & pixel_mask) != 0;
+
+                self.rows_start = min(self.rows_start, gfx_y as u8);
+                self.rows_end = max(self.rows_end, (gfx_y + sprite_height) as u8);
 
                 if sprite_pixel {
                     let gfx_index = gfx_x + gfx_y * self.width();
