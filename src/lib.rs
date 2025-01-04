@@ -88,6 +88,8 @@ pub struct Chip8 {
     pub should_draw: bool,
     hi_res: bool,
 
+    pub scroll_x: i8,
+
     pub rows_start: u8,
     pub rows_end: u8,
 }
@@ -110,6 +112,7 @@ impl Chip8 {
             tick_rate: DEFAULT_TICK_RATE,
             should_draw: false,
             hi_res: false,
+            scroll_x: 0,
             rows_start: 0,
             rows_end: 0,
         }
@@ -187,6 +190,16 @@ impl Chip8 {
         }
     }
 
+    pub fn full_screen_rows(&mut self) {
+        self.rows_start = 0;
+        self.rows_end = u8::MAX;
+    }
+
+    pub fn reset_rows(&mut self) {
+        self.rows_start = u8::MAX;
+        self.rows_end = 0;
+    }
+
     #[must_use]
     pub const fn play_sound(&self) -> bool {
         self.st == 1
@@ -223,6 +236,7 @@ impl Chip8 {
     /// Clear screen
     fn cls(&mut self) {
         self.gfx_buffer = vec![false; SCREEN_SIZE].into_boxed_slice();
+        self.full_screen_rows();
         self.should_draw = true;
         self.pc += 2;
     }
@@ -239,13 +253,17 @@ impl Chip8 {
     }
 
     fn scr(&mut self) {
-        self.gfx_buffer.rotate_right(4);
+        // self.gfx_buffer.rotate_right(4);
+        self.scroll_x += 4;
+        self.full_screen_rows();
         self.should_draw = true;
         self.pc += 2;
     }
 
     fn scl(&mut self) {
-        self.gfx_buffer.rotate_left(4);
+        // self.gfx_buffer.rotate_left(4);
+        self.scroll_x -= 4;
+        self.full_screen_rows();
         self.should_draw = true;
         self.pc += 2;
     }
@@ -467,9 +485,6 @@ impl Chip8 {
                 let pixel_mask = 1 << (sprite_width - 1 - x_offset);
                 let sprite_pixel = (row_bits & pixel_mask) != 0;
 
-                self.rows_start = min(self.rows_start, gfx_y as u8);
-                self.rows_end = max(self.rows_end, (gfx_y + sprite_height) as u8);
-
                 if sprite_pixel {
                     let gfx_index = gfx_x + gfx_y * self.width();
                     let was_pixel_set = self.gfx_buffer[gfx_index];
@@ -479,6 +494,9 @@ impl Chip8 {
                         self.v[0x0F] = 1; // Collision detected
                     }
 
+                    self.rows_start = min(self.rows_start, gfx_y as u8);
+                    self.rows_end = max(self.rows_end, (gfx_y + sprite_height) as u8);
+                    
                     self.should_draw = true;
                 }
             }

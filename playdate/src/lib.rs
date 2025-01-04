@@ -14,6 +14,8 @@ use controls::peripherals::Buttons;
 use pachip8risu::Chip8;
 use pd::sys::ffi::LCD_ROWSIZE;
 
+use core::cmp::min;
+use core::ops::Add;
 use core::ptr::NonNull;
 use pd::display::Display;
 use pd::graphics::*;
@@ -31,10 +33,12 @@ impl State {
         // TODO: Init the state
 
         let mut cpu = Chip8::new();
-        cpu.load_rom(include_bytes!("../../roms/piper.ch8"), Some(160));
+        cpu.load_rom(include_bytes!("../../roms/sweetcopter.ch8"), Some(160));
 
         let ms = System::Cached().seconds_since_epoch();
         cpu.set_random_seed(ms as u64);
+
+        Graphics::Cached().clear_raw(0);
 
         Self { cpu }
     }
@@ -113,7 +117,7 @@ impl Update for State {
             // TODO: Add beep
         }
 
-        let scale = if self.cpu.is_hi_res() { 3 } else { 6 };
+        let scale = if self.cpu.is_hi_res() { 2 } else { 4 };
         let lcd_width = if self.cpu.is_hi_res() { 128 } else { 64 };
         let lcd_height = if self.cpu.is_hi_res() { 64 } else { 32 };
 
@@ -143,7 +147,8 @@ pub fn draw(graphics: Graphics<Cache>, cpu: &mut Chip8, scale: usize, width: usi
     if cpu.should_draw {
         for y in 0..height {
             for x in 0..width {
-                let pixel = !cpu.gfx_buffer[y * width + x];
+                let pixel =
+                    !cpu.gfx_buffer[(y * width + x + cpu.scroll_x as usize) % cpu.gfx_buffer.len()];
 
                 // Draw a 3x3 block for each pixel
                 for sy in 0..scale {
@@ -172,8 +177,27 @@ pub fn draw(graphics: Graphics<Cache>, cpu: &mut Chip8, scale: usize, width: usi
             (cpu.rows_end * scale as u8).into(),
         );
 
-        cpu.rows_start = u8::MAX;
-        cpu.rows_end = 0;
+        /*
+        graphics.draw_line(
+            0,
+            (cpu.rows_start * scale as u8).into(),
+            400,
+            (cpu.rows_start * scale as u8).into(),
+            1,
+            0,
+        );
+
+        graphics.draw_line(
+            0,
+            (cpu.rows_end * scale as u8).into(),
+            400,
+            (cpu.rows_end * scale as u8).into(),
+            1,
+            0,
+        );
+        */
+
+        cpu.reset_rows();
     }
 }
 
