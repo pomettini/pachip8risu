@@ -11,11 +11,18 @@ crate-type = [
     "rlib",      # to link with bin
 ]
 
+[features]
+debug-opcode = []
+debug-profile = []
+debug-gfx = []
+
 [dependencies]
 playdate = "*"
 rand = { version = "0.8.4", features = ["small_rng"], default-features = false }
 playdate-controls = "*"
-num-traits = { version = "0.2.19", default-features = false, features = ["libm"] }
+num-traits = { version = "0.2.19", default-features = false, features = [
+    "libm",
+] }
 anyhow = { version = "1.0.93", default-features = false }
 
 # Playdate Package Info
@@ -40,3 +47,9 @@ dependencies = true    # allow to build assets for dependencies (default is `tru
 overwrite = true       # overwrite existing (default is `true`)
 method = "link"        # "copy" or "link"   (default is `link`)
 follow-symlinks = true # follow symlinks    (default is `true`)
+
+[profile.release]
+overflow-checks = false
+lto = true
+panic = 'abort'
+codegen-units = 1

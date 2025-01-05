@@ -1,5 +1,3 @@
-#![no_std]
-
 extern crate alloc;
 extern crate rand;
 
@@ -16,7 +14,7 @@ use rand::SeedableRng;
 const REGISTERS: usize = 16;
 const STACK_SIZE: usize = 16;
 const KEYS: usize = 16;
-const RAM_SIZE: usize = 4096;
+const RAM_SIZE: usize = 65536;
 const SCREEN_WIDTH: usize = 64;
 const SCREEN_HEIGHT: usize = 32;
 const SCREEN_SIZE: usize = (SCREEN_WIDTH * 2) * (SCREEN_HEIGHT * 2);
@@ -144,7 +142,7 @@ impl Chip8 {
     }
 
     #[inline]
-    const fn get_opcode(&self) -> u16 {
+    pub const fn get_opcode(&self) -> u16 {
         (self.memory[self.pc as usize] as u16) << 8 | (self.memory[self.pc as usize + 1] as u16)
     }
 
@@ -636,6 +634,8 @@ impl Chip8 {
             (0x2, _, _, _) => self.call_addr(nnn)?,
             (0x3, _, _, _) => self.se_vx_byte(x, kk),
             (0x4, _, _, _) => self.sne_vx_byte(x, kk),
+            (0x5, _, _, 2) => unimplemented!("Save VX..VY to memory starting at I"),
+            (0x5, _, _, 3) => unimplemented!("Load VX..VY from memory starting at I"),
             (0x5, _, _, _) => self.se_vx_vy(x, y),
             (0x6, _, _, _) => self.ld_vx_byte(x, kk),
             (0x7, _, _, _) => self.add_vx_byte(x, kk),
@@ -655,6 +655,7 @@ impl Chip8 {
             (0xD, _, _, _) => self.drw_vx_vy_nibble(x, y, n),
             (0xE, _, 0x9, 0xE) => self.skp_vx(x),
             (0xE, _, 0xA, 0x1) => self.sknp_vx(x),
+            (0xF, _, 0x0, 0x1) => unimplemented!("Select drawing planes by bitmask"),
             (0xF, _, 0x0, 0x7) => self.ld_vx_dt(x),
             (0xF, _, 0x0, 0xA) => self.ld_vx_k(x),
             (0xF, _, 0x1, 0x5) => self.ld_dt_vx(x),
@@ -667,6 +668,9 @@ impl Chip8 {
             (0xF, _, 0x7, 0x5) => self.ld_r_vx(),
             (0xF, _, 0x8, 0x5) => self.ld_vx_r(),
             (0xF, _, 0x6, 0x5) => self.ld_vx_i(x),
+            (0xF, 0x0, 0x0, 0x2) => unimplemented!("Store 16 bytes in audio pattern buffer, starting at I, to be played by the sound buzzer"),
+            (0xF, 0x0, 0x0, 0x0) => unimplemented!("Load I with 16-bit address NNNN"),
+            (0xF, 0x0, 0x3, 0xA) => unimplemented!("Set the pitch register to the value in VX"),
             (_, _, _, _) => {
                 return Err(anyhow::anyhow!(
                     "Unknown opcode: {opcode:#04X} at {0:#04X}",

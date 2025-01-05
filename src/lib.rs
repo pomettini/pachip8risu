@@ -1,6 +1,5 @@
 #![no_std]
 
-#[macro_use]
 extern crate alloc;
 
 #[macro_use]
@@ -12,8 +11,6 @@ use controls::buttons::PDButtonsExt;
 use controls::peripherals::Buttons;
 use pd::sys::ffi::{LCD_COLUMNS, LCD_ROWS, LCD_ROWSIZE};
 
-use core::cmp::min;
-use core::ops::Add;
 use core::ptr::NonNull;
 use pd::display::Display;
 use pd::graphics::*;
@@ -34,7 +31,7 @@ impl State {
         // TODO: Init the state
 
         let mut cpu = Chip8::new();
-        cpu.load_rom(include_bytes!("../roms/binding.ch8"), Some(160));
+        cpu.load_rom(include_bytes!("../roms/octopeg.ch8"), Some(160));
 
         let ms = System::Cached().seconds_since_epoch();
         cpu.set_random_seed(ms as u64);
@@ -59,8 +56,12 @@ impl State {
 impl Update for State {
     /// Updates the state
     fn update(&mut self) -> UpdateCtrl {
+        #[cfg(feature = "debug-opcode")]
+        println!("{0:#04X}", self.cpu.get_opcode());
+
         let graphics = Graphics::Cached();
         let buttons = Buttons::Cached();
+        #[cfg(feature = "debug-profile")]
         let system = System::Cached();
 
         let (up, right, down, left, a, b) = (5, 9, 8, 7, 6, 10);
@@ -103,6 +104,7 @@ impl Update for State {
             self.cpu.keys[b] = false;
         }
 
+        #[cfg(feature = "debug-profile")]
         let cpu_start = system.seconds_since_epoch_with_ms().1;
 
         match self.cpu.update() {
@@ -112,6 +114,7 @@ impl Update for State {
             }
         }
 
+        #[cfg(feature = "debug-profile")]
         let cpu_time = system.seconds_since_epoch_with_ms().1 - cpu_start;
 
         if self.cpu.play_sound() {
@@ -122,19 +125,21 @@ impl Update for State {
         let lcd_width = if self.cpu.is_hi_res() { 128 } else { 64 };
         let lcd_height = if self.cpu.is_hi_res() { 64 } else { 32 };
 
+        #[cfg(feature = "debug-profile")]
         let gpu_start = system.seconds_since_epoch_with_ms().1;
 
         draw(graphics, &mut self.cpu, scale, lcd_width, lcd_height);
 
+        #[cfg(feature = "debug-profile")]
         let gpu_time = system.seconds_since_epoch_with_ms().1 - gpu_start;
 
-        /*
+        #[cfg(feature = "debug-profile")]
         graphics
             .draw_text(format!("CPU: {},  GPU: {}!", cpu_time, gpu_time), 0, 0)
             .unwrap();
-        */
 
-        // println!("CPU: {}, GPU: {}!", cpu_time, gpu_time);
+        #[cfg(feature = "debug-profile")]
+        println!("CPU: {}, GPU: {}!", cpu_time, gpu_time);
 
         System::Cached().draw_fps(0, 0);
 
@@ -178,7 +183,7 @@ pub fn draw(graphics: Graphics<Cache>, cpu: &mut Chip8, scale: usize, width: usi
         // Update the rows, including padding offset
         graphics.mark_updated_rows(0, 240);
 
-        /*
+        #[cfg(feature = "debug-gfx")]
         graphics.draw_line(
             0,
             ((cpu.rows_start * scale as u8) + padding_y as u8).into(),
@@ -188,6 +193,7 @@ pub fn draw(graphics: Graphics<Cache>, cpu: &mut Chip8, scale: usize, width: usi
             0,
         );
 
+        #[cfg(feature = "debug-gfx")]
         graphics.draw_line(
             0,
             ((cpu.rows_end * scale as u8) + padding_y as u8).into(),
@@ -196,7 +202,6 @@ pub fn draw(graphics: Graphics<Cache>, cpu: &mut Chip8, scale: usize, width: usi
             1,
             0,
         );
-        */
 
         cpu.reset_rows();
     }
