@@ -1,17 +1,42 @@
 [package]
-name = "pachip8risu"
+name = "pachip8risu-playdate"
 version = "0.1.0"
 edition = "2021"
 
+[lib]
+path = "src/lib.rs"
+crate-type = [
+    "staticlib", # for hardware
+    "dylib",     # for simulator
+    "rlib",      # to link with bin
+]
+
 [dependencies]
-rand = { version = "0.8.4", features = [
-    "alloc",
-    "small_rng",
-], default-features = false }
+playdate = "*"
+rand = { version = "0.8.4", features = ["small_rng"], default-features = false }
+playdate-controls = "*"
+num-traits = { version = "0.2.19", default-features = false, features = ["libm"] }
 anyhow = { version = "1.0.93", default-features = false }
 
-[profile.dev]
-overflow-checks = false
+# Playdate Package Info
+# doc: https://github.com/boozook/playdate/blob/main/support/build/README.md#metadata
+# official doc: https://sdk.play.date/#pdxinfo
+[package.metadata.playdate]
+name = "Pachip8risu"
+author = "Giorgio Pomettini"
+version = "0.1.0"
+bundle-id = "com.pomettini.chip8"
+description = "Chip-8 emulator"
+# image-path = "img/system"
 
-[workspace]
-members = ["./playdate", "./ruscii"]
+# Assets Rules
+# doc: https://github.com/boozook/playdate/blob/main/support/build/README.md#assets
+[package.metadata.playdate.assets]
+# "img/system/" = "assets/launcher/card.png"
+
+# Assets Configuration
+[package.metadata.playdate.options.assets]
+dependencies = true    # allow to build assets for dependencies (default is `true`)
+overwrite = true       # overwrite existing (default is `true`)
+method = "link"        # "copy" or "link"   (default is `link`)
+follow-symlinks = true # follow symlinks    (default is `true`)

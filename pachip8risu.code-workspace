@@ -6,10 +6,5 @@
   ],
   "settings": {
     "cSpell.enabled": false,
-    "rust-analyzer.linkedProjects": [
-      "./Cargo.toml",
-      "./ruscii/Cargo.toml",
-      "./playdate/Cargo.toml"
-    ]
   }
 }
