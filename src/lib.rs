@@ -31,7 +31,7 @@ impl State {
         // TODO: Init the state
 
         let mut cpu = Chip8::new();
-        cpu.load_rom(include_bytes!("../roms/octopeg.ch8"), Some(160));
+        cpu.load_rom(include_bytes!("../roms/supersquare.ch8"), Some(200));
 
         let ms = System::Cached().seconds_since_epoch();
         cpu.set_random_seed(ms as u64);
@@ -60,52 +60,13 @@ impl Update for State {
         println!("{0:#04X}", self.cpu.get_opcode());
 
         let graphics = Graphics::Cached();
-        let buttons = Buttons::Cached();
         #[cfg(feature = "debug-profile")]
         let system = System::Cached();
 
-        let (up, right, down, left, a, b) = (5, 9, 8, 7, 6, 10);
-
-        if buttons.pushed().up() {
-            self.cpu.keys[up] = true;
-        }
-        if buttons.pushed().right() {
-            self.cpu.keys[right] = true;
-        }
-        if buttons.pushed().down() {
-            self.cpu.keys[down] = true;
-        }
-        if buttons.pushed().left() {
-            self.cpu.keys[left] = true;
-        }
-        if buttons.pushed().a() {
-            self.cpu.keys[a] = true;
-        }
-        if buttons.pushed().b() {
-            self.cpu.keys[b] = true;
-        }
-
-        if buttons.released().up() {
-            self.cpu.keys[up] = false;
-        }
-        if buttons.released().right() {
-            self.cpu.keys[right] = false;
-        }
-        if buttons.released().down() {
-            self.cpu.keys[down] = false;
-        }
-        if buttons.released().left() {
-            self.cpu.keys[left] = false;
-        }
-        if buttons.released().a() {
-            self.cpu.keys[a] = false;
-        }
-        if buttons.released().b() {
-            self.cpu.keys[b] = false;
-        }
-
         #[cfg(feature = "debug-profile")]
         let cpu_start = system.seconds_since_epoch_with_ms().1;
+
+        handle_inputs(&mut self.cpu);
 
         match self.cpu.update() {
             Ok(()) => {}
@@ -144,6 +105,52 @@ impl Update for State {
         System::Cached().draw_fps(0, 0);
 
         UpdateCtrl::Continue
+    }
+}
+
+pub fn handle_inputs(cpu: &mut Chip8) {
+    let buttons = Buttons::Cached();
+
+    let (up, right, down, left, a, b) = (5, 9, 8, 7, 6, 10);
+
+    // TODO: Needs refactor
+
+    if buttons.pushed().up() {
+        cpu.keys[up] = true;
+    }
+    if buttons.pushed().right() {
+        cpu.keys[right] = true;
+    }
+    if buttons.pushed().down() {
+        cpu.keys[down] = true;
+    }
+    if buttons.pushed().left() {
+        cpu.keys[left] = true;
+    }
+    if buttons.pushed().a() {
+        cpu.keys[a] = true;
+    }
+    if buttons.pushed().b() {
+        cpu.keys[b] = true;
+    }
+
+    if buttons.released().up() {
+        cpu.keys[up] = false;
+    }
+    if buttons.released().right() {
+        cpu.keys[right] = false;
+    }
+    if buttons.released().down() {
+        cpu.keys[down] = false;
+    }
+    if buttons.released().left() {
+        cpu.keys[left] = false;
+    }
+    if buttons.released().a() {
+        cpu.keys[a] = false;
+    }
+    if buttons.released().b() {
+        cpu.keys[b] = false;
     }
 }
 

@@ -463,7 +463,7 @@ impl Chip8 {
         let gfx_start_y = self.v[y as usize] as usize;
 
         // Determine sprite dimensions
-        let sprite_width = if n == 0 && self.is_hi_res() { 16 } else { 8 };
+        let sprite_width = if n == 0 { 16 } else { 8 };
         let sprite_height = if n == 0 { 16 } else { n as usize };
 
         self.v[0x0F] = 0; // Clear the collision flag
@@ -623,8 +623,8 @@ impl Chip8 {
         match nibbles {
             (0, 0, 0xC, _) => self.scd(n),
             (0, 0, 0xD, _) => self.scu(n),
-            (0, 0, 0xE, 0) => self.cls(),
             (0, 0, 0xE, 0xE) => self.ret()?,
+            (0, 0, 0xE, _) => self.cls(),
             (0, 0, 0xF, 0xB) => self.scr(),
             (0, 0, 0xF, 0xC) => self.scl(),
             (0, 0, 0xF, 0xD) => self.exit(),

@@ -43,13 +43,22 @@ description = "Chip-8 emulator"
 
 # Assets Configuration
 [package.metadata.playdate.options.assets]
-dependencies = true    # allow to build assets for dependencies (default is `true`)
-overwrite = true       # overwrite existing (default is `true`)
-method = "link"        # "copy" or "link"   (default is `link`)
-follow-symlinks = true # follow symlinks    (default is `true`)
+dependencies = true
+overwrite = true
+method = "link"
+follow-symlinks = true
+
+[profile.dev]
+panic = "abort"
 
 [profile.release]
+panic = "abort"
+opt-level = 3
 overflow-checks = false
-lto = true
-panic = 'abort'
+lto = "fat"
+incremental = false
 codegen-units = 1
+
+debug = 0
+strip = "symbols"
+debug-assertions = false
