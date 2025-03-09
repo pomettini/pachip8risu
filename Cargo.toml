@@ -12,24 +12,23 @@ crate-type = [
 ]
 
 [features]
-debug-opcode = []
-debug-profile = []
-debug-gfx = []
+debug = ["opcode", "profile", "gfx"]
+opcode = []
+profile = []
+gfx = []
 
 [dependencies]
-playdate = "*"
-rand = { version = "0.8.4", features = ["small_rng"], default-features = false }
-playdate-controls = "*"
-num-traits = { version = "0.2.19", default-features = false, features = [
-    "libm",
-] }
+playdate = "0.2.5"
+crankit-game-loop = { git = "https://github.com/pomettini/crankit-game-loop.git" }
+rand = { version = "0.9.0", features = ["small_rng"], default-features = false }
+num-traits = { version = "0.2", default-features = false, features = ["libm"] }
 anyhow = { version = "1.0.93", default-features = false }
 
 # Playdate Package Info
 # doc: https://github.com/boozook/playdate/blob/main/support/build/README.md#metadata
 # official doc: https://sdk.play.date/#pdxinfo
 [package.metadata.playdate]
-name = "Pachip8risu"
+name = "SUPERCHIP50"
 author = "Giorgio Pomettini"
 version = "0.1.0"
 bundle-id = "com.pomettini.chip8"
@@ -50,6 +49,7 @@ follow-symlinks = true
 
 [profile.dev]
 panic = "abort"
+overflow-checks = false
 
 [profile.release]
 panic = "abort"
@@ -62,3 +62,6 @@ codegen-units = 1
 debug = 0
 strip = "symbols"
 debug-assertions = false
+
+[lints.clippy]
+pedantic = "warn"

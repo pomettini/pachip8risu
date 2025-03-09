@@ -2,36 +2,28 @@
 
 extern crate alloc;
 
-#[macro_use]
 extern crate playdate as pd;
-extern crate playdate_controls as controls;
 
-use api::Cache;
-use controls::buttons::PDButtonsExt;
-use controls::peripherals::Buttons;
+use crankit_game_loop::{game_loop, Game, Playdate};
+use pd::controls::buttons::PDButtonsExt;
+use pd::controls::peripherals::Buttons;
+use pd::graphics::api::Cache;
+use pd::graphics::Graphics;
+use pd::println;
 use pd::sys::ffi::{LCD_COLUMNS, LCD_ROWS, LCD_ROWSIZE};
-
-use core::ptr::NonNull;
-use pd::display::Display;
-use pd::graphics::*;
-use pd::sys::ffi::PlaydateAPI;
-use pd::sys::EventLoopCtrl;
 use pd::system::prelude::*;
-use pd::system::update::UpdateCtrl;
 
 pub mod pachip8risu;
 use pachip8risu::*;
 
-struct State {
+struct MyGame {
     cpu: Chip8,
 }
 
-impl State {
-    fn new() -> Self {
-        // TODO: Init the state
-
+impl Game for MyGame {
+    fn new(_: &Playdate) -> Self {
         let mut cpu = Chip8::new();
-        cpu.load_rom(include_bytes!("../roms/supersquare.ch8"), Some(200));
+        cpu.load_rom(include_bytes!("../roms/sweetcopter.ch8"), Some(200));
 
         let ms = System::Cached().seconds_since_epoch();
         cpu.set_random_seed(ms as u64);
@@ -41,29 +33,16 @@ impl State {
         Self { cpu }
     }
 
-    /// System event handler
-    fn event(&'static mut self, event: SystemEvent) -> EventLoopCtrl {
-        if let SystemEvent::Init = event {
-            Display::Default().set_refresh_rate(50.0);
-
-            // Register our update handler that defined below
-            self.set_update_handler();
-        }
-        EventLoopCtrl::Continue
-    }
-}
-
-impl Update for State {
     /// Updates the state
-    fn update(&mut self) -> UpdateCtrl {
-        #[cfg(feature = "debug-opcode")]
+    fn update(&mut self, _: &Playdate) {
+        #[cfg(feature = "opcode")]
         println!("{0:#04X}", self.cpu.get_opcode());
 
         let graphics = Graphics::Cached();
-        #[cfg(feature = "debug-profile")]
+        #[cfg(feature = "profile")]
         let system = System::Cached();
 
-        #[cfg(feature = "debug-profile")]
+        #[cfg(feature = "profile")]
         let cpu_start = system.seconds_since_epoch_with_ms().1;
 
         handle_inputs(&mut self.cpu);
@@ -75,7 +54,7 @@ impl Update for State {
             }
         }
 
-        #[cfg(feature = "debug-profile")]
+        #[cfg(feature = "profile")]
         let cpu_time = system.seconds_since_epoch_with_ms().1 - cpu_start;
 
         if self.cpu.play_sound() {
@@ -86,25 +65,23 @@ impl Update for State {
         let lcd_width = if self.cpu.is_hi_res() { 128 } else { 64 };
         let lcd_height = if self.cpu.is_hi_res() { 64 } else { 32 };
 
-        #[cfg(feature = "debug-profile")]
+        #[cfg(feature = "profile")]
         let gpu_start = system.seconds_since_epoch_with_ms().1;
 
         draw(graphics, &mut self.cpu, scale, lcd_width, lcd_height);
 
-        #[cfg(feature = "debug-profile")]
+        #[cfg(feature = "profile")]
         let gpu_time = system.seconds_since_epoch_with_ms().1 - gpu_start;
 
-        #[cfg(feature = "debug-profile")]
+        #[cfg(feature = "profile")]
         graphics
             .draw_text(format!("CPU: {},  GPU: {}!", cpu_time, gpu_time), 0, 0)
             .unwrap();
 
-        #[cfg(feature = "debug-profile")]
+        #[cfg(feature = "profile")]
         println!("CPU: {}, GPU: {}!", cpu_time, gpu_time);
 
         System::Cached().draw_fps(0, 0);
-
-        UpdateCtrl::Continue
     }
 }
 
@@ -190,7 +167,7 @@ pub fn draw(graphics: Graphics<Cache>, cpu: &mut Chip8, scale: usize, width: usi
         // Update the rows, including padding offset
         graphics.mark_updated_rows(0, 240);
 
-        #[cfg(feature = "debug-gfx")]
+        #[cfg(feature = "gfx")]
         graphics.draw_line(
             0,
             ((cpu.rows_start * scale as u8) + padding_y as u8).into(),
@@ -200,7 +177,7 @@ pub fn draw(graphics: Graphics<Cache>, cpu: &mut Chip8, scale: usize, width: usi
             0,
         );
 
-        #[cfg(feature = "debug-gfx")]
+        #[cfg(feature = "gfx")]
         graphics.draw_line(
             0,
             ((cpu.rows_end * scale as u8) + padding_y as u8).into(),
@@ -214,31 +191,4 @@ pub fn draw(graphics: Graphics<Cache>, cpu: &mut Chip8, scale: usize, width: usi
     }
 }
 
-#[no_mangle]
-pub fn event_handler(
-    _api: NonNull<PlaydateAPI>,
-    event: SystemEvent,
-    _sim_key_code: u32,
-) -> EventLoopCtrl {
-    // Unsafe static storage for our state.
-    // Usually it's safe because there's only one thread.
-    pub static mut STATE: Option<State> = None;
-    if unsafe { STATE.is_none() } {
-        let state = State::new();
-        unsafe { STATE = Some(state) }
-    }
-
-    // Call state.event
-    unsafe { STATE.as_mut().expect("impossible") }.event(event)
-}
-
-pub fn draw_row(input: &[bool]) -> u8 {
-    input
-        .iter()
-        .rev()
-        .enumerate()
-        .fold(0, |acc, (i, b)| acc | (!b as u8) << i)
-}
-
-// Needed for debug build, absolutely optional
-ll_symbols!();
+game_loop!(MyGame);
