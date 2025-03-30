@@ -12,13 +12,12 @@ crate-type = [
 ]
 
 [features]
-debug = ["opcode", "profile", "gfx"]
-opcode = []
-profile = []
-gfx = []
+debug-print-opcode = []
+debug-profile = []
+debug-gfx = []
 
 [dependencies]
-playdate = "0.2.5"
+playdate = "0.2.6"
 crankit-game-loop = { git = "https://github.com/pomettini/crankit-game-loop.git" }
 rand = { version = "0.9.0", features = ["small_rng"], default-features = false }
 num-traits = { version = "0.2", default-features = false, features = ["libm"] }
