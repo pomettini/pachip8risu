@@ -3,6 +3,7 @@
 extern crate alloc;
 
 extern crate playdate as pd;
+extern crate playdate_menu;
 
 use core::cell::RefCell;
 
@@ -15,6 +16,7 @@ use pd::graphics::Graphics;
 use pd::println;
 use pd::sys::ffi::{LCD_COLUMNS, LCD_ROWS, LCD_ROWSIZE};
 use pd::system::prelude::*;
+use playdate_menu::*;
 
 pub mod game;
 use game::*;
@@ -33,6 +35,7 @@ pub enum MyState {
 
 pub struct MyMain {
     state: Rc<RefCell<MyState>>,
+    pending_state: Rc<RefCell<Option<MyState>>>,
     menu: MyMenu,
     game: MyGame,
 }
@@ -40,28 +43,43 @@ pub struct MyMain {
 impl Game for MyMain {
     fn new(pd: &Playdate) -> Self {
         let state = Rc::new(RefCell::new(MyState::Menu));
-        let mut menu = MyMenu::new(pd);
-        let game = MyGame::new(pd);
+        let pending_state = Rc::new(RefCell::new(None));
 
-        let state_clone = Rc::clone(&state);
+        let mut menu = MyMenu::new(pd);
+        let mut game = MyGame::new(pd);
+
+        // Clone for closure
+        let pending_state_clone = Rc::clone(&pending_state);
         menu.set_on_state_change(move |new_state| {
-            *state_clone.borrow_mut() = new_state;
+            *pending_state_clone.borrow_mut() = Some(new_state);
+        });
+        let pending_state_clone = Rc::clone(&pending_state);
+        game.set_on_state_change(move |new_state| {
+            *pending_state_clone.borrow_mut() = Some(new_state);
         });
 
-        Self { state, menu, game }
+        Self {
+            state,
+            pending_state,
+            menu,
+            game,
+        }
     }
 
     fn update(&mut self, pd: &Playdate) {
-        {
-            let current_state = *self.state.borrow();
-            match current_state {
-                MyState::Menu => {
-                    self.menu.update(pd);
-                }
-                MyState::Game(_) => {
-                    self.game.update(pd);
-                }
+        // Handle deferred state change
+        if let Some(new_state) = self.pending_state.borrow_mut().take() {
+            match new_state {
+                MyState::Menu => self.menu.on_enter(),
+                MyState::Game(id) => self.game.on_enter(id),
             }
+            *self.state.borrow_mut() = new_state;
+        }
+
+        // Call update based on current state
+        match *self.state.borrow() {
+            MyState::Menu => self.menu.update(pd),
+            MyState::Game(_) => self.game.update(pd),
         }
     }
 }

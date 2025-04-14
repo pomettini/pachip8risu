@@ -1,24 +1,45 @@
+use alloc::boxed::Box;
+use playdate_menu::api::Api;
+
 use super::*;
 
 pub struct MyGame {
+    pub on_state_change: Option<Box<dyn FnMut(MyState)>>,
     cpu: Chip8,
+    first: Option<SimpleMenuItem<u32>>,
 }
 
 impl Game for MyGame {
     fn new(_: &Playdate) -> Self {
-        let mut cpu = Chip8::new();
-        cpu.load_rom(include_bytes!("../roms/sweetcopter.ch8"), Some(200));
+        let cpu = Chip8::new();
 
-        let ms = System::Cached().seconds_since_epoch();
-        cpu.set_random_seed(ms as u64);
-
-        // Graphics::Cached().clear_raw(0);
-
-        Self { cpu }
+        Self {
+            on_state_change: None,
+            cpu,
+            first: None,
+        }
     }
 
     /// Updates the state
     fn update(&mut self, _: &Playdate) {
+        let mut should_remove = false;
+
+        if let Some(ref item) = self.first {
+            if let Some(userdata) = item.get_userdata() {
+                if *userdata == 1 {
+                    item.set_userdata(0);
+                    if let Some(ref mut callback) = self.on_state_change {
+                        callback(MyState::Menu);
+                        should_remove = true;
+                    }
+                }
+            }
+        }
+
+        if should_remove {
+            self.first = None;
+        }
+
         #[cfg(feature = "debug-print-opcode")]
         println!("{0:#04X}", self.cpu.get_opcode());
 
@@ -172,5 +193,32 @@ pub fn draw(graphics: Graphics<Cache>, cpu: &mut Chip8, scale: usize, width: usi
         );
 
         cpu.reset_rows();
+    }
+}
+
+impl MyGame {
+    pub fn on_enter(&mut self, id: u8) {
+        println!("Entered Game state");
+
+        self.cpu
+            .load_rom(include_bytes!("../roms/sweetcopter.ch8"), Some(200));
+
+        let ms = System::Cached().seconds_since_epoch();
+        self.cpu.set_random_seed(ms as u64);
+
+        let on_change = move |userdata: &mut u32| {
+            *userdata = 1;
+        };
+
+        self.first = SimpleMenuItem::new("Check Me", Some(on_change), 0)
+            .unwrap()
+            .into();
+    }
+
+    pub fn set_on_state_change<F>(&mut self, callback: F)
+    where
+        F: FnMut(MyState) + 'static,
+    {
+        self.on_state_change = Some(Box::new(callback));
     }
 }

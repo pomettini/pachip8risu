@@ -17,8 +17,11 @@ impl Game for MyMenu {
         }
     }
 
-    fn update(&mut self, _pd: &Playdate) {
+    fn update(&mut self, _: &Playdate) {
+        Graphics::Cached().clear_raw(1);
+
         System::Cached().draw_fps(0, 0);
+
         Graphics::Cached()
             .draw_text_in_rect(
                 "This is the menu",
@@ -42,6 +45,11 @@ impl Game for MyMenu {
 }
 
 impl MyMenu {
+    pub fn on_enter(&mut self) {
+        println!("Entered Menu state");
+        // Any other setup logic
+    }
+
     pub fn set_on_state_change<F>(&mut self, callback: F)
     where
         F: FnMut(MyState) + 'static,
